@@ -15,10 +15,13 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, minibatch_coalescing):
+    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat):
         assert isinstance(env.action_space, Discrete)
+        assert minibatch_coalescing >= 1
+        assert greedy_action_max_repeat >= 0
         self._env = env
         self._minibatch_coalescing = minibatch_coalescing
+        self._greedy_action_max_repeat = greedy_action_max_repeat
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -29,6 +32,9 @@ class DQNAgent:
         self._batch_size = 32
         self._target_update_freq = 10_000
 
+        self._last_greedy_action = None
+        self._time_of_last_greedy_action = 0
+
     def policy(self, t, state):
         assert t > 0, "timestep must start at 1"
         epsilon = self._epsilon_schedule(t)
@@ -36,10 +42,16 @@ class DQNAgent:
         # With probability epsilon, take a random action
         if np.random.rand() < epsilon:
             return self._env.action_space.sample()
+        # Else, if the timer hasn't expired, take the previous greedy action
+        elif (t - self._time_of_last_greedy_action) <= self._greedy_action_max_repeat:
+            if self._last_greedy_action is not None:
+                return self._last_greedy_action
 
-        # Otherwise, take the predicted best action
+        # Otherwise, take the predicted best action (greedy)
         Q = self._dqn.predict(state[None])[0]
-        return np.argmax(Q)
+        self._last_greedy_action = np.argmax(Q)
+        self._time_of_last_greedy_action = t
+        return self._last_greedy_action
 
     def _epsilon_schedule(self, t):
         if t <= self._prepopulate:
@@ -51,6 +63,9 @@ class DQNAgent:
     def update(self, t, state, action, reward, done):
         assert t > 0, "timestep must start at 1"
         self._replay_memory.save(state, action, reward, done)
+
+        if done:
+            self._last_greedy_action = None
 
         if t % self._target_update_freq == 1:
             self._dqn.update_target_net()
@@ -65,7 +80,7 @@ class DQNAgent:
             self._dqn.train(*minibatch, split=self._minibatch_coalescing)
 
 
-def main(env_id, minibatch_coalescing, timesteps, seed):
+def main(env_id, minibatch_coalescing, greedy_repeat_prob, timesteps, seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
@@ -74,7 +89,7 @@ def main(env_id, minibatch_coalescing, timesteps, seed):
     env.action_space.seed(seed)
     state = env.reset()
 
-    agent = DQNAgent(env, minibatch_coalescing)
+    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob)
 
     for t in itertools.count(start=1):
         if t >= timesteps and done:
@@ -91,7 +106,8 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--coalesce', type=int, default=1)
+    parser.add_argument('--greedy-repeat', type=int, default=0)
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
-    main(args.game, args.coalesce, args.timesteps, args.seed)
+    main(args.game, args.coalesce, args.greedy_repeat, args.timesteps, args.seed)
