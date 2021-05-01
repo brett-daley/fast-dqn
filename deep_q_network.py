@@ -37,7 +37,14 @@ class DeepQNetwork:
         return self._target_net(self._preprocess_states(states))
 
     @tf.function
-    def train(self, states, actions, rewards, next_states, dones):
+    def train(self, states, actions, rewards, next_states, dones, split=1):
+        assert states.shape[0] % split == 0
+        batch_size = states.shape[0] // split
+        for i in range(split):
+            s = slice(i * batch_size, (i + 1) * batch_size)
+            self._train(states[s], actions[s], rewards[s], next_states[s], dones[s])
+
+    def _train(self, states, actions, rewards, next_states, dones):
         max_Q = tf.reduce_max(self._predict_target(next_states), axis=1)
 
         with tf.GradientTape() as tape:
