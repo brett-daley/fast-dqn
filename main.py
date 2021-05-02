@@ -80,11 +80,11 @@ class DQNAgent:
             self._dqn.train(*minibatch, split=self._minibatch_coalescing)
 
 
-def main(env_id, minibatch_coalescing, greedy_repeat_prob, timesteps, seed):
+def main(env_id, minibatch_coalescing, greedy_repeat_prob, faster_preprocessing, timesteps, seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    env = atari_env.make(env_id)
+    env = atari_env.make(env_id, faster_preprocessing)
     env.seed(seed)
     env.action_space.seed(seed)
     state = env.reset()
@@ -107,7 +107,8 @@ if __name__ == '__main__':
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--coalesce', type=int, default=1)
     parser.add_argument('--greedy-repeat', type=int, default=0)
+    parser.add_argument('--cv2-opt', action='store_true')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
-    main(args.game, args.coalesce, args.greedy_repeat, args.timesteps, args.seed)
+    main(args.game, args.coalesce, args.greedy_repeat, args.cv2_opt, args.timesteps, args.seed)

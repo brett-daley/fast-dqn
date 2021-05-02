@@ -3,12 +3,13 @@ from collections import deque
 import cv2
 import gym
 from gym.envs.atari.atari_env import AtariEnv
+from gym.spaces import Box
 import numpy as np
 
 from auto_monitor import AutoMonitor
 
 
-def make(game, size=84, grayscale=True, history_len=4):
+def make(game, faster_preprocessing=False):
     env = AtariEnv(game, frameskip=4, obs_type='image')
     env = AutoMonitor(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
@@ -16,9 +17,11 @@ def make(game, size=84, grayscale=True, history_len=4):
     env = NoopResetWrapper(env)
     env = EpisodicLifeWrapper(env)
     env = ClippedRewardWrapper(env)
-    env = PreprocessedImageWrapper(env, size, grayscale)
-    if history_len > 1:
-        env = HistoryWrapper(env, history_len)
+    if faster_preprocessing:
+        env = FasterPreprocessImageWrapper(env)
+    else:
+        env = PreprocessImageWrapper(env)
+    env = HistoryWrapper(env, history_len=4)
     return env
 
 
@@ -113,17 +116,24 @@ class NoopResetWrapper(gym.Wrapper):
         return observation
 
 
-class PreprocessedImageWrapper(gym.ObservationWrapper):
-    """Resizes image observations and optionally converts them to grayscale."""
-    def __init__(self, env, size=84, grayscale=True):
+class PreprocessImageWrapper(gym.ObservationWrapper):
+    def __init__(self, env, shape=(84, 84, 1)):
+        assert len(shape) == 3
         super().__init__(env)
-        self.size = size
-        self.grayscale = grayscale
-        self.shape = (size, size, 1 if grayscale else 3)
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=self.shape, dtype=np.uint8)
+        self._shape = shape
+        self.observation_space = Box(low=0, high=255, shape=shape, dtype=np.uint8)
 
     def observation(self, observation):
-        if self.grayscale:
-            observation = cv2.cvtColor(observation, cv2.COLOR_BGR2GRAY)
-        observation = cv2.resize(observation, (self.size, self.size), interpolation=cv2.INTER_LINEAR)
-        return observation.reshape(self.shape).astype(np.uint8)
+        observation = cv2.cvtColor(observation, cv2.COLOR_BGR2GRAY)
+        return self._resize(observation).reshape(self._shape)
+
+    def _resize(self, observation):
+        return cv2.resize(observation, self._shape[:2][::-1], interpolation=cv2.INTER_NEAREST)
+
+
+class FasterPreprocessImageWrapper(PreprocessImageWrapper):
+    def __init__(self, env):
+        super().__init__(env, shape=(104, 80, 1))
+
+    def _resize(self, observation):
+        return super()._resize(observation[1:-1])

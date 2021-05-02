@@ -10,7 +10,7 @@ class DeepQNetwork:
 
         def model():
             return Sequential([
-                InputLayer([84, 84, 4]),
+                InputLayer(env.observation_space.shape),
                 Conv2D(32, kernel_size=8, strides=4, activation='relu'),
                 Conv2D(64, kernel_size=4, strides=2, activation='relu'),
                 Conv2D(64, kernel_size=3, strides=1, activation='relu'),
