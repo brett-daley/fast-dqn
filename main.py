@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from functools import lru_cache
 import itertools
 import os
 
@@ -15,7 +16,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat):
+    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat, cache_size):
         assert isinstance(env.action_space, Discrete)
         assert minibatch_coalescing >= 1
         assert greedy_action_max_repeat >= 0
@@ -35,6 +36,23 @@ class DQNAgent:
         self._last_greedy_action = None
         self._time_of_last_greedy_action = 0
 
+        if cache_size > 0:
+            @lru_cache(maxsize=cache_size)
+            def greedy_action_from_bytes(state_bytes):
+                state = np.frombuffer(state_bytes, dtype=np.uint8)
+                state = np.reshape(state, env.observation_space.shape)
+                return self._greedy_action_no_cache(state)
+
+            def greedy_action_with_cache(state):
+                state_bytes = state.tobytes()
+                return greedy_action_from_bytes(state_bytes)
+
+            self._greedy_action = greedy_action_with_cache
+            # self._cache_info = greedy_action_from_bytes.cache_info
+
+        else:
+            self._greedy_action = self._greedy_action_no_cache
+
     def policy(self, t, state):
         assert t > 0, "timestep must start at 1"
         epsilon = self._epsilon_schedule(t)
@@ -48,10 +66,13 @@ class DQNAgent:
                 return self._last_greedy_action
 
         # Otherwise, take the predicted best action (greedy)
-        Q = self._dqn.predict(state[None])[0]
-        self._last_greedy_action = np.argmax(Q)
+        self._last_greedy_action = self._greedy_action(state)
         self._time_of_last_greedy_action = t
         return self._last_greedy_action
+
+    def _greedy_action_no_cache(self, state):
+        Q = self._dqn.predict(state[None])[0]
+        return np.argmax(Q)
 
     def _epsilon_schedule(self, t):
         if t <= self._prepopulate:
@@ -80,7 +101,7 @@ class DQNAgent:
             self._dqn.train(*minibatch, split=self._minibatch_coalescing)
 
 
-def main(env_id, minibatch_coalescing, greedy_repeat_prob, faster_preprocessing, timesteps, seed):
+def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_preprocessing, timesteps, seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
@@ -89,7 +110,7 @@ def main(env_id, minibatch_coalescing, greedy_repeat_prob, faster_preprocessing,
     env.action_space.seed(seed)
     state = env.reset()
 
-    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob)
+    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob, cache_size)
 
     for t in itertools.count(start=1):
         if t >= timesteps and done:
@@ -101,14 +122,17 @@ def main(env_id, minibatch_coalescing, greedy_repeat_prob, faster_preprocessing,
         agent.update(t, state, action, reward, done)
         state = env.reset() if done else next_state
 
+    # print(agent._cache_info())
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--coalesce', type=int, default=1)
+    parser.add_argument('--cache-size', type=int, default=0)
     parser.add_argument('--greedy-repeat', type=int, default=0)
     parser.add_argument('--cv2-opt', action='store_true')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
-    main(args.game, args.coalesce, args.greedy_repeat, args.cv2_opt, args.timesteps, args.seed)
+    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.cv2_opt, args.timesteps, args.seed)
