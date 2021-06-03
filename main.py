@@ -8,9 +8,9 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.optimizers import RMSprop
 
-import atari_env
-from deep_q_network import DeepQNetwork
-from replay_memory import ReplayMemory
+from fast_dqn import atari_env
+from fast_dqn.deep_q_network import DeepQNetwork
+from fast_dqn.replay_memory import ReplayMemory
 
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 

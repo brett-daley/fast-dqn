@@ -6,7 +6,7 @@ from gym.envs.atari.atari_env import AtariEnv
 from gym.spaces import Box
 import numpy as np
 
-from auto_monitor import AutoMonitor
+from fast_dqn.auto_monitor import AutoMonitor
 
 
 def make(game, faster_preprocessing=False):
