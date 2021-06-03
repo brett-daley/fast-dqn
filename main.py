@@ -16,7 +16,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat, cache_size):
+    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat, cache_size, pass_sharing):
         assert isinstance(env.action_space, Discrete)
         assert minibatch_coalescing >= 1
         assert greedy_action_max_repeat >= 0
@@ -35,6 +35,9 @@ class DQNAgent:
 
         self._last_greedy_action = None
         self._time_of_last_greedy_action = 0
+
+        self._pass_sharing = pass_sharing
+        self._next_action = None
 
         if cache_size > 0:
             @lru_cache(maxsize=cache_size)
@@ -66,7 +69,11 @@ class DQNAgent:
                 return self._last_greedy_action
 
         # Otherwise, take the predicted best action (greedy)
-        self._last_greedy_action = self._greedy_action(state)
+        if self._pass_sharing and (self._next_action is not None):
+            self._last_greedy_action = self._next_action
+        else:
+            self._last_greedy_action = self._greedy_action(state)
+
         self._time_of_last_greedy_action = t
         return self._last_greedy_action
 
@@ -81,7 +88,7 @@ class DQNAgent:
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 
-    def update(self, t, state, action, reward, done):
+    def update(self, t, state, action, reward, done, next_state):
         assert t > 0, "timestep must start at 1"
         self._replay_memory.save(state, action, reward, done)
 
@@ -98,10 +105,19 @@ class DQNAgent:
         if t % (self._train_freq * self._minibatch_coalescing) == 1:
             batch_size = self._batch_size * self._minibatch_coalescing
             minibatch = self._replay_memory.sample(batch_size)
-            self._dqn.train(*minibatch, split=self._minibatch_coalescing)
+
+            minibatch = self._replay_memory.insert_most_recent(minibatch, next_state)
+
+            self._next_action = self._dqn.train(*minibatch, split=self._minibatch_coalescing)
+
+        else:
+            self._next_action = None
+
+        if done:
+            self._next_action = None
 
 
-def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_preprocessing, timesteps, seed):
+def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_preprocessing, pass_sharing, timesteps, seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
@@ -110,7 +126,7 @@ def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_pr
     env.action_space.seed(seed)
     state = env.reset()
 
-    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob, cache_size)
+    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob, cache_size, pass_sharing)
 
     for t in itertools.count(start=1):
         if t >= timesteps and done:
@@ -119,7 +135,7 @@ def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_pr
 
         action = agent.policy(t, state)
         next_state, reward, done, _ = env.step(action)
-        agent.update(t, state, action, reward, done)
+        agent.update(t, state, action, reward, done, next_state)
         state = env.reset() if done else next_state
 
     # print(agent._cache_info())
@@ -132,7 +148,8 @@ if __name__ == '__main__':
     parser.add_argument('--cache-size', type=int, default=0)
     parser.add_argument('--greedy-repeat', type=int, default=0)
     parser.add_argument('--cv2-opt', action='store_true')
+    parser.add_argument('--pass-sharing', action='store_true')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
-    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.cv2_opt, args.timesteps, args.seed)
+    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.cv2_opt, args.pass_sharing, args.timesteps, args.seed)
