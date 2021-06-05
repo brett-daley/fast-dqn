@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from distutils.util import strtobool
 import itertools
 import os
 
@@ -16,13 +17,14 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, minibatch_coalescing, greedy_action_max_repeat, cache_size, pass_sharing):
+    def __init__(self, env, mb_coalescing=1, greedy_repeat=0,
+                 cache_size=0, fb_sharing=False, **kwargs):
         assert isinstance(env.action_space, Discrete)
-        assert minibatch_coalescing >= 1
-        assert greedy_action_max_repeat >= 0
+        assert mb_coalescing >= 1
+        assert greedy_repeat >= 0
         self._env = env
-        self._minibatch_coalescing = minibatch_coalescing
-        self._greedy_action_max_repeat = greedy_action_max_repeat
+        self._minibatch_coalescing = mb_coalescing
+        self._greedy_action_max_repeat = greedy_repeat
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -36,7 +38,7 @@ class DQNAgent:
         self._last_greedy_action = None
         self._time_of_last_greedy_action = 0
 
-        self._pass_sharing = pass_sharing
+        self._fb_sharing = fb_sharing
         self._next_action = None
 
         self._cache = FIFOCache(cache_size) if (cache_size > 0) else None
@@ -54,7 +56,7 @@ class DQNAgent:
                 return self._last_greedy_action
 
         # Otherwise, take the predicted best action (greedy)
-        if self._pass_sharing and (self._next_action is not None):
+        if self._fb_sharing and (self._next_action is not None):
             self._last_greedy_action = self._next_action
         else:
             self._last_greedy_action = self._greedy_action(state)
@@ -112,16 +114,21 @@ class DQNAgent:
             self._next_action = None
 
 
-def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, interpolation, pass_sharing, timesteps, seed):
-    np.random.seed(seed)
-    tf.random.set_seed(seed)
+def parse_kwargs():
+    parser = ArgumentParser()
+    parser.add_argument('--game', type=str, default='pong')
+    parser.add_argument('--mb-coalescing', type=int, default=1)
+    parser.add_argument('--cache-size', type=int, default=0)
+    parser.add_argument('--greedy-repeat', type=int, default=0)
+    parser.add_argument('--interp', type=str, default='linear')
+    parser.add_argument('--fb-sharing', type=strtobool, default=False)
+    parser.add_argument('--timesteps', type=int, default=5_000_000)
+    parser.add_argument('--seed', type=int, default=0)
+    return vars(parser.parse_args())
 
-    env = atari_env.make(env_id, interpolation)
-    env.seed(seed)
-    env.action_space.seed(seed)
+
+def train(env, agent, timesteps):
     state = env.reset()
-
-    agent = DQNAgent(env, minibatch_coalescing, greedy_repeat_prob, cache_size, pass_sharing)
 
     for t in itertools.count(start=1):
         if t >= timesteps and done:
@@ -134,15 +141,23 @@ def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, interpola
         state = env.reset() if done else next_state
 
 
+def main(kwargs):
+    game = kwargs['game']
+    seed = kwargs['seed']
+    interpolation = kwargs['interp']
+    timesteps = kwargs['timesteps']
+
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+
+    env = atari_env.make(game, interpolation)
+    env.seed(seed)
+    env.action_space.seed(seed)
+
+    agent = DQNAgent(env, **kwargs)
+    train(env, agent, timesteps)
+
+
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('--game', type=str, default='pong')
-    parser.add_argument('--coalesce', type=int, default=1)
-    parser.add_argument('--cache-size', type=int, default=0)
-    parser.add_argument('--greedy-repeat', type=int, default=0)
-    parser.add_argument('--interp', type=str, default='nearest')
-    parser.add_argument('--pass-sharing', action='store_true')
-    parser.add_argument('--timesteps', type=int, default=5_000_000)
-    parser.add_argument('--seed', type=int, default=0)
-    args = parser.parse_args()
-    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.interp, args.pass_sharing, args.timesteps, args.seed)
+    kwargs = parse_kwargs()
+    main(kwargs)
