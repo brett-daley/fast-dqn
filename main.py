@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-from functools import lru_cache
 import itertools
 import os
 
@@ -10,6 +9,7 @@ from tensorflow.keras.optimizers import RMSprop
 
 from fast_dqn import atari_env
 from fast_dqn.deep_q_network import DeepQNetwork
+from fast_dqn.fifo_cache import FIFOCache
 from fast_dqn.replay_memory import ReplayMemory
 
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
@@ -39,22 +39,7 @@ class DQNAgent:
         self._pass_sharing = pass_sharing
         self._next_action = None
 
-        if cache_size > 0:
-            @lru_cache(maxsize=cache_size)
-            def greedy_action_from_bytes(state_bytes):
-                state = np.frombuffer(state_bytes, dtype=np.uint8)
-                state = np.reshape(state, env.observation_space.shape)
-                return self._greedy_action_no_cache(state)
-
-            def greedy_action_with_cache(state):
-                state_bytes = state.tobytes()
-                return greedy_action_from_bytes(state_bytes)
-
-            self._greedy_action = greedy_action_with_cache
-            # self._cache_info = greedy_action_from_bytes.cache_info
-
-        else:
-            self._greedy_action = self._greedy_action_no_cache
+        self._cache = FIFOCache(cache_size) if (cache_size > 0) else None
 
     def policy(self, t, state):
         assert t > 0, "timestep must start at 1"
@@ -77,9 +62,19 @@ class DQNAgent:
         self._time_of_last_greedy_action = t
         return self._last_greedy_action
 
-    def _greedy_action_no_cache(self, state):
+    def _greedy_action(self, state):
+        if self._cache is not None:
+            try:
+                return self._cache[state]
+            except KeyError:
+                pass
+
         Q = self._dqn.predict(state[None])[0]
-        return np.argmax(Q)
+        action = np.argmax(Q)
+
+        if self._cache is not None:
+            self._cache.push(state, action)
+        return action
 
     def _epsilon_schedule(self, t):
         if t <= self._prepopulate:
@@ -137,8 +132,6 @@ def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_pr
         next_state, reward, done, _ = env.step(action)
         agent.update(t, state, action, reward, done, next_state)
         state = env.reset() if done else next_state
-
-    # print(agent._cache_info())
 
 
 if __name__ == '__main__':
