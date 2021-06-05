@@ -112,11 +112,11 @@ class DQNAgent:
             self._next_action = None
 
 
-def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, faster_preprocessing, pass_sharing, timesteps, seed):
+def main(env_id, minibatch_coalescing, cache_size, greedy_repeat_prob, interpolation, pass_sharing, timesteps, seed):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    env = atari_env.make(env_id, faster_preprocessing)
+    env = atari_env.make(env_id, interpolation)
     env.seed(seed)
     env.action_space.seed(seed)
     state = env.reset()
@@ -140,9 +140,9 @@ if __name__ == '__main__':
     parser.add_argument('--coalesce', type=int, default=1)
     parser.add_argument('--cache-size', type=int, default=0)
     parser.add_argument('--greedy-repeat', type=int, default=0)
-    parser.add_argument('--cv2-opt', action='store_true')
+    parser.add_argument('--interp', type=str, default='nearest')
     parser.add_argument('--pass-sharing', action='store_true')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
-    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.cv2_opt, args.pass_sharing, args.timesteps, args.seed)
+    main(args.game, args.coalesce, args.cache_size, args.greedy_repeat, args.interp, args.pass_sharing, args.timesteps, args.seed)

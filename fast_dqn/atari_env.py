@@ -9,7 +9,7 @@ import numpy as np
 from fast_dqn.auto_monitor import AutoMonitor
 
 
-def make(game, faster_preprocessing=False):
+def make(game, interpolation='nearest'):
     env = AtariEnv(game, frameskip=4, obs_type='image')
     env = AutoMonitor(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
@@ -17,10 +17,7 @@ def make(game, faster_preprocessing=False):
     env = NoopResetWrapper(env)
     env = EpisodicLifeWrapper(env)
     env = ClippedRewardWrapper(env)
-    if faster_preprocessing:
-        env = FasterPreprocessImageWrapper(env)
-    else:
-        env = PreprocessImageWrapper(env)
+    env = PreprocessImageWrapper(env, interpolation)
     env = HistoryWrapper(env, history_len=4)
     return env
 
@@ -117,18 +114,18 @@ class NoopResetWrapper(gym.Wrapper):
 
 
 class PreprocessImageWrapper(gym.ObservationWrapper):
-    def __init__(self, env, shape=(84, 84, 1)):
-        assert len(shape) == 3
+    def __init__(self, env, interpolation='nearest'):
         super().__init__(env)
-        self._shape = shape
-        self.observation_space = Box(low=0, high=255, shape=shape, dtype=np.uint8)
+        self._shape = (84, 84, 1)
+        self.observation_space = Box(low=0, high=255, shape=self._shape, dtype=np.uint8)
+        self._interpolation = getattr(cv2, 'INTER_' + interpolation.upper())
 
     def observation(self, observation):
         observation = cv2.cvtColor(observation, cv2.COLOR_BGR2GRAY)
         return self._resize(observation).reshape(self._shape)
 
     def _resize(self, observation):
-        return cv2.resize(observation, self._shape[:2][::-1], interpolation=cv2.INTER_NEAREST)
+        return cv2.resize(observation, self._shape[:2][::-1], interpolation=self._interpolation)
 
 
 class FasterPreprocessImageWrapper(PreprocessImageWrapper):
