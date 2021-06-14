@@ -11,10 +11,11 @@ from fast_dqn.auto_monitor import AutoMonitor
 
 def make(game, interpolation='nearest'):
     env = AtariEnv(game, frameskip=4, obs_type='image')
-    env = AutoMonitor(env)
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetWrapper(env)
     env = NoopResetWrapper(env)
+    # To avoid miscounts, monitor must come after no-ops and before episodic life reset
+    env = AutoMonitor(env)
     env = EpisodicLifeWrapper(env)
     env = ClippedRewardWrapper(env)
     env = PreprocessImageWrapper(env, interpolation)
