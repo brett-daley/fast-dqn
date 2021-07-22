@@ -127,11 +127,3 @@ class PreprocessImageWrapper(gym.ObservationWrapper):
 
     def _resize(self, observation):
         return cv2.resize(observation, self._shape[:2][::-1], interpolation=self._interpolation)
-
-
-class FasterPreprocessImageWrapper(PreprocessImageWrapper):
-    def __init__(self, env):
-        super().__init__(env, shape=(104, 80, 1))
-
-    def _resize(self, observation):
-        return super()._resize(observation[1:-1])

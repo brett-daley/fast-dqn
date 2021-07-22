@@ -10,21 +10,18 @@ from tensorflow.keras.optimizers import RMSprop
 
 from fast_dqn import atari_env
 from fast_dqn.deep_q_network import DeepQNetwork
-from fast_dqn.fifo_cache import FIFOCache
 from fast_dqn.replay_memory import ReplayMemory
 
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, mb_coalescing=1, greedy_repeat=0,
-                 cache_size=0, fb_sharing=False, **kwargs):
+    def __init__(self, env, mb_coalescing=1,
+                 fb_sharing=False, **kwargs):
         assert isinstance(env.action_space, Discrete)
         assert mb_coalescing >= 1
-        assert greedy_repeat >= 0
         self._env = env
         self._minibatch_coalescing = mb_coalescing
-        self._greedy_action_max_repeat = greedy_repeat
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -35,13 +32,8 @@ class DQNAgent:
         self._batch_size = 32
         self._target_update_freq = 10_000
 
-        self._last_greedy_action = None
-        self._time_of_last_greedy_action = 0
-
         self._fb_sharing = fb_sharing
-        self._next_action = None
-
-        self._cache = FIFOCache(cache_size) if (cache_size > 0) else None
+        self._precomputed_action = None
 
     def policy(self, t, state):
         assert t > 0, "timestep must start at 1"
@@ -50,33 +42,15 @@ class DQNAgent:
         # With probability epsilon, take a random action
         if np.random.rand() < epsilon:
             return self._env.action_space.sample()
-        # Else, if the timer hasn't expired, take the previous greedy action
-        elif (t - self._time_of_last_greedy_action) <= self._greedy_action_max_repeat:
-            if self._last_greedy_action is not None:
-                return self._last_greedy_action
-
-        # Otherwise, take the predicted best action (greedy)
-        if self._fb_sharing and (self._next_action is not None):
-            self._last_greedy_action = self._next_action
-        else:
-            self._last_greedy_action = self._greedy_action(state)
-
-        self._time_of_last_greedy_action = t
-        return self._last_greedy_action
+        # If we have a precomputed action ready, take it
+        if self._fb_sharing and (self._precomputed_action is not None):
+            return self._precomputed_action
+        # Otherwise, compute the greedy (i.e. best predicted) action
+        return self._greedy_action(state)
 
     def _greedy_action(self, state):
-        if self._cache is not None:
-            try:
-                return self._cache[state]
-            except KeyError:
-                pass
-
         Q = self._dqn.predict(state[None])[0]
-        action = np.argmax(Q)
-
-        if self._cache is not None:
-            self._cache.push(state, action)
-        return action
+        return np.argmax(Q)
 
     def _epsilon_schedule(self, t):
         if t <= self._prepopulate:
@@ -89,9 +63,6 @@ class DQNAgent:
         assert t > 0, "timestep must start at 1"
         self._replay_memory.save(state, action, reward, done)
 
-        if done:
-            self._last_greedy_action = None
-
         if t % self._target_update_freq == 1:
             self._dqn.update_target_net()
 
@@ -102,24 +73,19 @@ class DQNAgent:
         if t % (self._train_freq * self._minibatch_coalescing) == 1:
             batch_size = self._batch_size * self._minibatch_coalescing
             minibatch = self._replay_memory.sample(batch_size)
-
             minibatch = self._replay_memory.insert_most_recent(minibatch, next_state)
-
-            self._next_action = self._dqn.train(*minibatch, split=self._minibatch_coalescing)
-
+            self._precomputed_action = self._dqn.train(*minibatch, split=self._minibatch_coalescing)
         else:
-            self._next_action = None
+            self._precomputed_action = None
 
         if done:
-            self._next_action = None
+            self._precomputed_action = None
 
 
 def parse_kwargs():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--mb-coalescing', type=int, default=1)
-    parser.add_argument('--cache-size', type=int, default=0)
-    parser.add_argument('--greedy-repeat', type=int, default=0)
     parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--fb-sharing', type=strtobool, default=False)
     parser.add_argument('--timesteps', type=int, default=5_000_000)
