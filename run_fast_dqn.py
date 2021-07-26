@@ -46,7 +46,8 @@ class FastDQNAgent(DQNAgent):
         if t % (self._train_freq * self._minibatch_coalescing) == 1:
             batch_size = self._batch_size * self._minibatch_coalescing
             minibatch = self._replay_memory.sample(batch_size)
-            minibatch = self._replay_memory.insert_most_recent(minibatch, next_state)
+            if self._fb_sharing:
+                minibatch = self._replay_memory.insert_most_recent(minibatch, next_state)
             self._precomputed_action = self._dqn.train(*minibatch, split=self._minibatch_coalescing)
         else:
             self._precomputed_action = None
