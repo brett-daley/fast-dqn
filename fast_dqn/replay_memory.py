@@ -27,13 +27,3 @@ class ReplayMemory:
                 self.rewards[j],
                 self.states[(j + 1) % self._size_now],
                 self.dones[j])
-
-    def insert_most_recent(self, minibatch, next_state):
-        states, actions, rewards, next_states, dones = minibatch
-        i = (self._pointer - 1) % self._size_now
-        states[0] = self.states[i]
-        actions[0] = self.actions[i]
-        rewards[0] = self.rewards[i]
-        next_states[0] = next_state
-        dones[0] = self.dones[i]
-        return (states, actions, rewards, next_states, dones)

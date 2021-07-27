@@ -37,8 +37,11 @@ class DQNAgent:
         # Otherwise, compute the greedy (i.e. best predicted) action
         return self._greedy_action(state)
 
+    def _predict(self, states):
+        return self._dqn.predict(states)
+
     def _greedy_action(self, state):
-        Q = self._dqn.predict(state[None])[0]
+        Q = self._predict(state[None])[0]
         return np.argmax(Q)
 
     def _epsilon_schedule(self, t):
@@ -48,7 +51,7 @@ class DQNAgent:
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 
-    def update(self, t, state, action, reward, done, next_state):
+    def update(self, t, state, action, reward, done):
         assert t > 0, "timestep must start at 1"
         self._replay_memory.save(state, action, reward, done)
 
@@ -83,7 +86,7 @@ def train(env, agent, timesteps):
 
         action = agent.policy(t, state)
         next_state, reward, done, _ = env.step(action)
-        agent.update(t, state, action, reward, done, next_state)
+        agent.update(t, state, action, reward, done)
         state = env.reset() if done else next_state
 
 

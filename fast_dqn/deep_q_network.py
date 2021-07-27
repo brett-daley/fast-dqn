@@ -33,7 +33,8 @@ class DeepQNetwork:
     def predict(self, states):
         return self._main_net(self._preprocess_states(states))
 
-    def _predict_target(self, states):
+    @tf.function
+    def predict_target(self, states):
         return self._target_net(self._preprocess_states(states))
 
     @tf.function
@@ -41,7 +42,7 @@ class DeepQNetwork:
         assert states.shape[0] % split == 0
         batch_size = states.shape[0] // split
 
-        next_Q = self._predict_target(next_states)
+        next_Q = self.predict_target(next_states)
         targets = rewards + self.discount * (1.0 - dones) * tf.reduce_max(next_Q, axis=1)
         mask = tf.one_hot(actions, depth=next_Q.shape[1])
 
@@ -55,9 +56,6 @@ class DeepQNetwork:
 
             gradients = tape.gradient(loss, self._main_vars)
             self.optimizer.apply_gradients(zip(gradients, self._main_vars))
-
-        next_action = tf.argmax(next_Q[0])
-        return next_action
 
     @tf.function
     def update_target_net(self):
