@@ -42,7 +42,7 @@ class ParallelFastDQNAgent(FastDQNAgent):
         super().__init__(env, **kwargs)
         self._transition_buffer = []
         self._train_queue = Queue()
-        Thread(target=self._train_loop).start()
+        Thread(target=self._train_loop, daemon=True).start()
 
     def _predict(self, states):
         # We use the target network here so we can train the main network in parallel
