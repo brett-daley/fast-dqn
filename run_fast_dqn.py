@@ -24,7 +24,7 @@ class FastDQNAgent(DQNAgent):
         if t % self._target_update_freq == 1:
             self._dqn.update_target_net()
 
-        if t <= self._prepopulate:
+        if t < self._training_start:
             # We're still pre-populating the replay memory
             return
 
@@ -61,7 +61,7 @@ class ParallelFastDQNAgent(FastDQNAgent):
                 self._replay_memory.save(*transition)
                 self._transition_buffer.clear()
 
-            if t > self._prepopulate:
+            if t >= self._training_start:
                 self._train_queue.put_nowait(t)
 
     def _train_loop(self):

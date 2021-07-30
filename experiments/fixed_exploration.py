@@ -26,7 +26,7 @@ def main(agent_cls, kwargs):
     agent = agent_cls(env, **kwargs)
 
     # Here we intercept the agent's exploration parameters
-    agent._prepopulate = 1
+    agent._training_start = 10_000
     agent._epsilon_schedule = lambda t: 0.1
 
     train(env, agent, timesteps)

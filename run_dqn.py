@@ -22,7 +22,7 @@ class DQNAgent:
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
         self._replay_memory = ReplayMemory(env, capacity=1_000_000)
 
-        self._prepopulate = 50_000
+        self._training_start = 50_000
         self._train_freq = 4
         self._batch_size = 32
         self._target_update_freq = 10_000
@@ -45,9 +45,9 @@ class DQNAgent:
         return np.argmax(Q)
 
     def _epsilon_schedule(self, t):
-        if t <= self._prepopulate:
+        if t <= self._training_start:
             return 1.0
-        t -= self._prepopulate
+        t -= self._training_start
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 
@@ -58,7 +58,7 @@ class DQNAgent:
         if t % self._target_update_freq == 1:
             self._dqn.update_target_net()
 
-        if t <= self._prepopulate:
+        if t < self._training_start:
             # We're still pre-populating the replay memory
             return
 
