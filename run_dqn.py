@@ -15,9 +15,11 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, env, **kwargs):
+    def __init__(self, make_env_fn, **kwargs):
+        self._env = env = make_env_fn()
         assert isinstance(env.action_space, Discrete)
-        self._env = env
+        self._state = env.reset()
+
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
         self._replay_memory = ReplayMemory(env, capacity=1_000_000)
@@ -26,6 +28,11 @@ class DQNAgent:
         self._train_freq = 4
         self._batch_size = 32
         self._target_update_freq = 10_000
+
+    def run(self, duration):
+        for t in range(1, duration + 1):
+            self.update(t)
+        # TODO: Any necessary shutdown here?
 
     def policy(self, t, state):
         assert t > 0, "timestep must start at 1"
@@ -51,9 +58,13 @@ class DQNAgent:
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 
-    def update(self, t, state, action, reward, done):
+    def update(self, t):
         assert t > 0, "timestep must start at 1"
-        self._replay_memory.save(state, action, reward, done)
+
+        action = self.policy(t, self._state)
+        next_state, reward, done, _ = self._env.step(action)
+        self._replay_memory.save(self._state, action, reward, done)
+        self._state = self._env.reset() if done else next_state
 
         if t % self._target_update_freq == 1:
             self._dqn.update_target_net()
@@ -76,35 +87,20 @@ def parse_kwargs():
     return vars(parser.parse_args())
 
 
-def train(env, agent, timesteps):
-    state = env.reset()
-
-    for t in itertools.count(start=1):
-        if t >= timesteps and done:
-            env.close()
-            break
-
-        action = agent.policy(t, state)
-        next_state, reward, done, _ = env.step(action)
-        agent.update(t, state, action, reward, done)
-        state = env.reset() if done else next_state
-
-
 def main(agent_cls, kwargs):
-    game = kwargs['game']
     seed = kwargs['seed']
-    interpolation = kwargs['interp']
-    timesteps = kwargs['timesteps']
-
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    env = atari_env.make(game, interpolation)
-    env.seed(seed)
-    env.action_space.seed(seed)
+    # TODO: Is sharing the seed here ok?
+    def make_env_fn():
+        env = atari_env.make(kwargs['game'], kwargs['interp'])
+        env.seed(seed)
+        env.action_space.seed(seed)
+        return env
 
-    agent = agent_cls(env, **kwargs)
-    train(env, agent, timesteps)
+    agent = agent_cls(make_env_fn, **kwargs)
+    agent.run(kwargs['timesteps'])
 
 
 if __name__ == '__main__':
