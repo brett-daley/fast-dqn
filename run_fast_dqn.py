@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from distutils.util import strtobool
+import itertools
 import os
 from threading import Thread
 from queue import Queue
@@ -12,48 +13,58 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class FastDQNAgent(DQNAgent):
-    def __init__(self, make_env_fn, mb_coalescing=1, concurrent_training=False, workers=1, **kwargs):
-        assert workers > 0
-        self._workers = tuple(Worker(i, env=make_env_fn(), agent=self) for i in range(workers))
+    def __init__(self, make_env_fn, mb_coalescing=1, concurrent=True, workers=8, synchronize=True, **kwargs):
+        assert workers >= 1
+        worker_cls = SynchronousWorker if synchronize else Worker
+        self._workers = tuple(worker_cls(env=make_env_fn(), agent=self) for _ in range(workers))
 
         super().__init__(make_env_fn)
-        self._env = self._workers[0]._env
-        self._state = self._env.reset()
+        self._env = env = self._workers[0]._env
 
         assert mb_coalescing >= 1
         self._minibatch_coalescing = mb_coalescing
         assert self._target_update_freq % (self._train_freq * self._minibatch_coalescing) == 0
         self._minibatches_per_epoch = self._target_update_freq // (self._train_freq * self._minibatch_coalescing)
 
-        self._concurrent_training = concurrent_training
+        self._concurrent_training = concurrent
+        self._synchronize = synchronize
         self._train_queue = Queue()
         Thread(target=self._train_loop, daemon=True).start()
 
-    def _predict(self, states):
-        # We use the target network here so we can train the main network in parallel
-        return self._dqn.predict_target(states)
+        self._shared_states = np.empty([workers, *env.observation_space.shape], dtype=np.float32)
+        self._shared_qvalues = np.empty([workers, env.action_space.n], dtype=np.float32)
 
-    def update(self, t):
-        assert t > 0, "timestep must start at 1"
+    def run(self, duration):
+        for t in range(self._prepopulate):
+            w = self._workers[t % len(self._workers)]
+            w._step(action=self._env.action_space.sample())
+        self._flush_workers()
+        assert self._replay_memory._size_now == self._prepopulate
 
-        i = (t - 1) % len(self._workers)
-        self._workers[i].sample(t)
+        for j in itertools.count():
+            for k in range(len(self._workers)):
+                t = len(self._workers) * j + k + 1
 
-        if t % self._target_update_freq == 1:
-            self._train_queue.join()
+                if t % self._target_update_freq == 1:
+                    self._train_queue.join()
+                    self._flush_workers()
+                    self._dqn.update_target_net()
 
-            for w in self._workers:
-                w.join()
-                for transition in w.flush():
-                    self._replay_memory.save(*transition)
+                    for _ in range(self._minibatches_per_epoch):
+                        self._train_queue.put_nowait(None)
+                        if not self._concurrent_training:
+                            self._train_queue.join()
 
-            self._dqn.update_target_net()
+                if self._synchronize and k == 0:
+                    self._update_worker_q_values()
 
-            if t >= self._training_start:
-                for _ in range(self._minibatches_per_epoch):
-                    self._train_queue.put_nowait(None)
-                    if not self._concurrent_training:
-                        self._train_queue.join()
+                self._workers[k].update(t)
+
+                if t >= duration:
+                    break
+
+        for w in self._workers:
+            w.env.close()
 
     def _train_loop(self):
         while True:
@@ -65,30 +76,73 @@ class FastDQNAgent(DQNAgent):
 
             self._train_queue.task_done()
 
+    def _flush_workers(self):
+        for w in self._workers:
+            w.join()
+            for transition in w.flush():
+                self._replay_memory.save(*transition)
+
+    def _update_worker_q_values(self):
+        # Collect states from the workers
+        for i, w in enumerate(self._workers):
+            w.join()
+            self._shared_states[i] = w.state
+
+        # Compute the Q-values in a single minibatch
+        # We use the target network here so we can train the main network in parallel
+        self._shared_qvalues = self._dqn.predict_target(self._shared_states)
+
+        # Distribute the Q-values to the workers
+        for i, w in enumerate(self._workers):
+            w.q_values = self._shared_qvalues[i]
+
+    # These functionalities are deferred to the individual workers
+    def _policy(self, t):
+        raise NotImplementedError
+    def _step(self, action):
+        raise NotImplementedError
+
 
 class Worker:
-    def __init__(self, worker_id, env, agent):
+    def __init__(self, env, agent):
         self._env = env
-        self._state = env.reset()
         self._agent = agent
+
+        self.state = env.reset()
+        self.q_values = None
 
         self._transition_buffer = []
         self._sample_queue = Queue()
         Thread(target=self._sample_loop, daemon=True).start()
 
-    def sample(self, t):
+    def update(self, t):
         self._sample_queue.put_nowait(t)
 
     def _sample_loop(self):
         while True:
             t = self._sample_queue.get()
-
-            action = self._agent.policy(t, self._state)
-            next_state, reward, done, _ = self._env.step(action)
-            self._transition_buffer.append( (self._state.copy(), action, reward, done) )
-            self._state = self._env.reset() if done else next_state
-
+            self._step(action=self._policy(t))
             self._sample_queue.task_done()
+
+    def _policy(self, t):
+        assert t > 0, "timestep must start at 1"
+
+        # With probability epsilon, take a random action
+        epsilon = self._agent._epsilon_schedule(t)
+        if np.random.rand() < epsilon:
+            return self._env.action_space.sample()
+
+        # Otherwise, compute the greedy (i.e. best predicted) action
+        return np.argmax(self._get_q_values())
+
+    def _get_q_values(self):
+        # We use the target network here so we can train the main network in parallel
+        return self._agent._dqn.predict_target(self.state[None])[0]
+
+    def _step(self, action):
+        next_state, reward, done, _ = self._env.step(action)
+        self._transition_buffer.append( (self.state.copy(), action, reward, done) )
+        self.state = self._env.reset() if done else next_state
 
     def join(self):
         self._sample_queue.join()
@@ -99,13 +153,20 @@ class Worker:
         self._transition_buffer.clear()
 
 
+class SynchronousWorker(Worker):
+    def _get_q_values(self):
+        # We rely on the agent to compute these for us
+        return self.q_values
+
+
 def parse_kwargs():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--mb-coalescing', type=int, default=1)
     parser.add_argument('--interp', type=str, default='linear')
-    parser.add_argument('--concurrent-training', type=strtobool, default=False)
-    parser.add_argument('--workers', type=int, default=1)
+    parser.add_argument('--concurrent', type=strtobool, default=True)
+    parser.add_argument('--workers', type=int, default=8)
+    parser.add_argument('--synchronize', type=strtobool, default=True)
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--seed', type=int, default=0)
     return vars(parser.parse_args())

@@ -9,7 +9,7 @@ from run_fast_dqn import main, parse_kwargs
 class FastDQNAgent(_FastDQNAgent):
     def run(self, duration):
         # Here we intercept the agent's exploration parameters
-        self._training_start = 10_000
+        self._prepopulate = 2
         self._epsilon_schedule = lambda t: 0.1
         super().run(duration)
 
