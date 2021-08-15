@@ -6,9 +6,10 @@ speedtest:
   script: experiments/fixed_exploration.py
   kwargs:
     game: pong
-    mb-coalescing: [1, 2, 4, 8, 16, 32, 64]
-    parallel-training: [False, True]
-    timesteps: 1000000
+    workers: [1, 2, 4, 8, 16, 32]
+    concurrent: [False, True]
+    synchronize: [False, True]
+    timesteps: 500000
     seed: {seeds}
 """
 

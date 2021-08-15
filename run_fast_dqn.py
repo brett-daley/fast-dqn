@@ -13,7 +13,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class FastDQNAgent(DQNAgent):
-    def __init__(self, make_env_fn, mb_coalescing=1, concurrent=True, workers=8, synchronize=True, **kwargs):
+    def __init__(self, make_env_fn, workers=8, concurrent=True, synchronize=True, **kwargs):
         assert workers >= 1
         worker_cls = SynchronousWorker if synchronize else Worker
         self._workers = tuple(worker_cls(env=make_env_fn(), agent=self) for _ in range(workers))
@@ -21,10 +21,8 @@ class FastDQNAgent(DQNAgent):
         super().__init__(make_env_fn)
         self._env = env = self._workers[0]._env
 
-        assert mb_coalescing >= 1
-        self._minibatch_coalescing = mb_coalescing
-        assert self._target_update_freq % (self._train_freq * self._minibatch_coalescing) == 0
-        self._minibatches_per_epoch = self._target_update_freq // (self._train_freq * self._minibatch_coalescing)
+        assert self._target_update_freq % self._train_freq == 0
+        self._minibatches_per_epoch = self._target_update_freq // self._train_freq
 
         self._concurrent_training = concurrent
         self._synchronize = synchronize
@@ -69,11 +67,8 @@ class FastDQNAgent(DQNAgent):
     def _train_loop(self):
         while True:
             self._train_queue.get()
-
-            batch_size = self._batch_size * self._minibatch_coalescing
-            minibatch = self._replay_memory.sample(batch_size)
-            self._dqn.train(*minibatch, split=self._minibatch_coalescing)
-
+            minibatch = self._replay_memory.sample(self._batch_size)
+            self._dqn.train(*minibatch)
             self._train_queue.task_done()
 
     def _flush_workers(self):
@@ -162,7 +157,6 @@ class SynchronousWorker(Worker):
 def parse_kwargs():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
-    parser.add_argument('--mb-coalescing', type=int, default=1)
     parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--concurrent', type=strtobool, default=True)
     parser.add_argument('--workers', type=int, default=8)

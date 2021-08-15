@@ -38,24 +38,18 @@ class DeepQNetwork:
         return self._target_net(self._preprocess_states(states))
 
     @tf.function
-    def train(self, states, actions, rewards, next_states, dones, split=1):
-        assert states.shape[0] % split == 0
-        batch_size = states.shape[0] // split
-
+    def train(self, states, actions, rewards, next_states, dones):
         next_Q = self.predict_target(next_states)
         targets = rewards + self.discount * (1.0 - dones) * tf.reduce_max(next_Q, axis=1)
         mask = tf.one_hot(actions, depth=next_Q.shape[1])
 
-        for i in range(split):
-            sl = slice(i * batch_size, (i + 1) * batch_size)
+        with tf.GradientTape() as tape:
+            Q = self.predict(states)
+            Q = tf.reduce_sum(mask * Q, axis=1)
+            loss = tf.keras.losses.MSE(targets, Q)
 
-            with tf.GradientTape() as tape:
-                Q = self.predict(states[sl])
-                Q = tf.reduce_sum(mask[sl] * Q, axis=1)
-                loss = tf.keras.losses.MSE(targets[sl], Q)
-
-            gradients = tape.gradient(loss, self._main_vars)
-            self.optimizer.apply_gradients(zip(gradients, self._main_vars))
+        gradients = tape.gradient(loss, self._main_vars)
+        self.optimizer.apply_gradients(zip(gradients, self._main_vars))
 
     @tf.function
     def update_target_net(self):
