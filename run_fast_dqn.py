@@ -49,10 +49,16 @@ class FastDQNAgent(DQNAgent):
                     self._flush_workers()
                     self._dqn.update_target_net()
 
-                    for _ in range(self._minibatches_per_epoch):
+                if self._concurrent_training:
+                    if t % self._target_update_freq == 1:
+                        for _ in range(self._minibatches_per_epoch):
+                            self._train_queue.put_nowait(None)
+                else:
+                    if t % self._train_freq == 1:
+                        for w in self._workers:
+                            w.join()
                         self._train_queue.put_nowait(None)
-                        if not self._concurrent_training:
-                            self._train_queue.join()
+                        self._train_queue.join()
 
                 if self._synchronize and k == 0:
                     self._update_worker_q_values()
