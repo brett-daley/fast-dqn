@@ -66,10 +66,9 @@ class FastDQNAgent(DQNAgent):
                 self._workers[k].update(t)
 
                 if t >= duration:
-                    break
-
-        for w in self._workers:
-            w.env.close()
+                    for w in self._workers:
+                        w._env.close()
+                    return
 
     def _train_loop(self):
         while True:
