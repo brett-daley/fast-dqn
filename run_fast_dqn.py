@@ -15,8 +15,9 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 class FastDQNAgent(DQNAgent):
     def __init__(self, make_env_fn, workers=8, concurrent=True, synchronize=True, **kwargs):
         assert workers >= 1
-        worker_cls = SynchronousWorker if synchronize else Worker
-        self._workers = tuple(worker_cls(env=make_env_fn(), agent=self) for _ in range(workers))
+        if synchronize:
+            assert workers != 1
+        self._workers = tuple(Worker(env=make_env_fn(), agent=self) for _ in range(workers))
 
         super().__init__(make_env_fn)
         self._env = env = self._workers[0]._env
@@ -78,6 +79,7 @@ class FastDQNAgent(DQNAgent):
                 self._replay_memory.save(*transition)
 
     def _update_worker_q_values(self):
+        # TODO: A clearer way to do this would be passing array references to the worker constructor
         # Collect states from the workers
         for i, w in enumerate(self._workers):
             w.join()
@@ -131,6 +133,10 @@ class Worker:
         return np.argmax(self._get_q_values())
 
     def _get_q_values(self):
+        if self.q_values is not None:
+            # The agent has pre-computed Q-values for us
+            return self.q_values
+
         # We use the target network here so we can train the main network in parallel
         return self._agent._dqn.predict_target(self.state[None])[0]
 
@@ -146,12 +152,6 @@ class Worker:
         for transition in self._transition_buffer:
             yield transition
         self._transition_buffer.clear()
-
-
-class SynchronousWorker(Worker):
-    def _get_q_values(self):
-        # We rely on the agent to compute these for us
-        return self.q_values
 
 
 def parse_kwargs():
