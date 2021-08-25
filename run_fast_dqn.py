@@ -109,6 +109,7 @@ class Worker:
     def __init__(self, env, agent):
         self._env = env
         self._agent = agent
+        self._np_random = np.random.RandomState(seed=0)
 
         self.state = env.reset()
         self.q_values = None
@@ -131,7 +132,7 @@ class Worker:
 
         # With probability epsilon, take a random action
         epsilon = self._agent._epsilon_schedule(t)
-        if np.random.rand() < epsilon:
+        if self._np_random.rand() < epsilon:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action
