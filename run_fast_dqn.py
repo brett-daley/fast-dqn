@@ -22,6 +22,11 @@ class FastDQNAgent(DQNAgent):
         super().__init__(make_env_fn)
         self._env = env = self._workers[0]._env
 
+        if synchronize:
+            # Target update frequency must be divisible by number of workers to
+            # ensure workers use the correct network parameters when synchronized
+            assert self._target_update_freq % workers == 0
+
         assert self._target_update_freq % self._train_freq == 0
         self._minibatches_per_epoch = self._target_update_freq // self._train_freq
 
@@ -40,34 +45,31 @@ class FastDQNAgent(DQNAgent):
         self._flush_workers()
         assert self._replay_memory._size_now == self._prepopulate
 
-        for j in itertools.count():
-            for k in range(len(self._workers)):
-                t = len(self._workers) * j + k + 1
-
-                if t % self._target_update_freq == 1:
-                    self._train_queue.join()
-                    self._flush_workers()
-                    self._dqn.update_target_net()
+        for t in itertools.count(start=1):
+            if t % self._target_update_freq == 1:
+                self._train_queue.join()
+                self._flush_workers()
+                self._dqn.update_target_net()
 
                 if self._concurrent_training:
-                    if t % self._target_update_freq == 1:
-                        for _ in range(self._minibatches_per_epoch):
-                            self._train_queue.put_nowait(None)
-                else:
-                    if t % self._train_freq == 1:
-                        for w in self._workers:
-                            w.join()
+                    for _ in range(self._minibatches_per_epoch):
                         self._train_queue.put_nowait(None)
-                        self._train_queue.join()
 
-                if self._synchronize and k == 0:
-                    self._update_worker_q_values()
+            if not self._concurrent_training:
+                if t % self._train_freq == 1:
+                    for w in self._workers:
+                        w.join()
+                    self._train_queue.put_nowait(None)
+                    self._train_queue.join()
 
-                self._workers[k].update(t)
+            i = t % len(self._workers)
+            if i == 1 and self._synchronize:
+                self._update_worker_q_values()
+            self._workers[i].update(t)
 
-                if t >= duration:
-                    self._shutdown()
-                    return
+            if t >= duration:
+                self._shutdown()
+                return
 
     def _train_loop(self):
         while True:
