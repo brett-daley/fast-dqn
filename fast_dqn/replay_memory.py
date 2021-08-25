@@ -6,6 +6,7 @@ class ReplayMemory:
         self._capacity = capacity
         self._size_now = 0
         self._pointer = 0
+        self._np_random = np.random.RandomState(seed=0)
 
         self.states = np.empty(shape=[capacity, *env.observation_space.shape],
                                dtype=env.observation_space.dtype)
@@ -20,7 +21,7 @@ class ReplayMemory:
         self._pointer = (p + 1) % self._capacity
 
     def sample(self, batch_size):
-        j = np.random.randint(self._size_now - 1, size=batch_size)
+        j = self._np_random.randint(self._size_now - 1, size=batch_size)
         j = (self._pointer + j) % self._size_now
         return (self.states[j],
                 self.actions[j],
