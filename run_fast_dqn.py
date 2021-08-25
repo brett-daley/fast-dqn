@@ -66,8 +66,7 @@ class FastDQNAgent(DQNAgent):
                 self._workers[k].update(t)
 
                 if t >= duration:
-                    for w in self._workers:
-                        w._env.close()
+                    self._shutdown()
                     return
 
     def _train_loop(self):
@@ -97,6 +96,12 @@ class FastDQNAgent(DQNAgent):
         # Distribute the Q-values to the workers
         for i, w in enumerate(self._workers):
             w.q_values = self._shared_qvalues[i]
+
+    def _shutdown(self):
+        self._train_queue.join()
+        for w in self._workers:
+            w.join()
+            w.close()
 
     # These functionalities are deferred to the individual workers
     def _policy(self, t):
@@ -158,6 +163,9 @@ class Worker:
         for transition in self._transition_buffer:
             yield transition
         self._transition_buffer.clear()
+
+    def close(self):
+        self._env.close()
 
 
 def parse_kwargs():
