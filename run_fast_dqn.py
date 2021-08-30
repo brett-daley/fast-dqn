@@ -17,7 +17,16 @@ class FastDQNAgent(DQNAgent):
         assert workers >= 1
         if synchronize:
             assert workers != 1
-        self._workers = tuple(Worker(env=make_env_fn(), agent=self) for _ in range(workers))
+
+        envs = tuple(make_env_fn() for _ in range(workers))
+
+        self.shared_states = np.empty([workers, *envs[0].observation_space.shape], dtype=np.float32)
+        self.shared_qvalues = np.empty([workers, envs[0].action_space.n], dtype=np.float32)
+        # Set permissions to avoid accidental writes
+        self.shared_states.flags.writeable = True
+        self.shared_qvalues.flags.writeable = False
+
+        self._workers = tuple(Worker(i, env=envs[i], agent=self) for i in range(workers))
 
         super().__init__(make_env_fn)
         self._env = env = self._workers[0]._env
@@ -35,19 +44,18 @@ class FastDQNAgent(DQNAgent):
         self._train_queue = Queue()
         Thread(target=self._train_loop, daemon=True).start()
 
-        self._shared_states = np.empty([workers, *env.observation_space.shape], dtype=np.float32)
-        self._shared_qvalues = np.empty([workers, env.action_space.n], dtype=np.float32)
-
     def run(self, duration):
         for t in range(self._prepopulate):
             w = self._workers[t % len(self._workers)]
             w._step(action=self._env.action_space.sample())
+        self._sync_workers()
         self._flush_workers()
         assert self._replay_memory._size_now == self._prepopulate
 
         for t in itertools.count(start=1):
             if t % self._target_update_freq == 1:
                 self._train_queue.join()
+                self._sync_workers()
                 self._flush_workers()
                 self._dqn.update_target_net()
 
@@ -57,14 +65,13 @@ class FastDQNAgent(DQNAgent):
 
             if not self._concurrent_training:
                 if t % self._train_freq == 1:
-                    for w in self._workers:
-                        w.join()
+                    self._sync_workers()
                     self._train_queue.put_nowait(None)
                     self._train_queue.join()
 
             i = t % len(self._workers)
             if i == 1 and self._synchronize:
-                self._update_worker_q_values()
+                self._update_worker_qvalues()
             self._workers[i].update(t)
 
             if t >= duration:
@@ -78,31 +85,34 @@ class FastDQNAgent(DQNAgent):
             self._dqn.train(*minibatch)
             self._train_queue.task_done()
 
-    def _flush_workers(self):
+    def _sync_workers(self):
         for w in self._workers:
             w.join()
+
+    def _flush_workers(self):
+        for w in self._workers:
             for transition in w.flush():
                 self._replay_memory.save(*transition)
 
-    def _update_worker_q_values(self):
-        # TODO: A clearer way to do this would be passing array references to the worker constructor
-        # Collect states from the workers
-        for i, w in enumerate(self._workers):
-            w.join()
-            self._shared_states[i] = w.state
+    def _update_worker_qvalues(self):
+        self._sync_workers()
+
+        # Toggle read-only
+        for a in [self.shared_states, self.shared_qvalues]:
+            a.flags.writeable = not a.flags.writeable
 
         # Compute the Q-values in a single minibatch
         # We use the target network here so we can train the main network in parallel
-        self._shared_qvalues = self._dqn.predict_target(self._shared_states)
+        self.shared_qvalues = self._dqn.predict_target(self.shared_states).numpy()
 
-        # Distribute the Q-values to the workers
-        for i, w in enumerate(self._workers):
-            w.q_values = self._shared_qvalues[i]
+        # Toggle read-only
+        for a in [self.shared_states, self.shared_qvalues]:
+            a.flags.writeable = not a.flags.writeable
 
     def _shutdown(self):
         self._train_queue.join()
+        self._sync_workers()
         for w in self._workers:
-            w.join()
             w.close()
 
     # These functionalities are deferred to the individual workers
@@ -113,13 +123,13 @@ class FastDQNAgent(DQNAgent):
 
 
 class Worker:
-    def __init__(self, env, agent):
+    def __init__(self, worker_id, env, agent):
+        self._id = worker_id
         self._env = env
         self._agent = agent
         self._np_random = np.random.RandomState(seed=0)
 
-        self.state = env.reset()
-        self.q_values = None
+        self._state = env.reset()
 
         self._transition_buffer = []
         self._sample_queue = Queue()
@@ -143,20 +153,29 @@ class Worker:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action
-        return np.argmax(self._get_q_values())
+        return np.argmax(self._qvalues)
 
-    def _get_q_values(self):
-        if self.q_values is not None:
+    @property
+    def _state(self):
+        return self._agent.shared_states[self._id]
+
+    @_state.setter
+    def _state(self, state):
+        self._agent.shared_states[self._id] = state
+
+    @property
+    def _qvalues(self):
+        try:
             # The agent has pre-computed Q-values for us
-            return self.q_values
-
-        # We use the target network here so we can train the main network in parallel
-        return self._agent._dqn.predict_target(self.state[None])[0]
+            return self._agent.shared_qvalues[self._id]
+        except AttributeError:
+            # We use the target network here so we can train the main network in parallel
+            return self._agent._dqn.predict_target(self._state[None])[0]
 
     def _step(self, action):
         next_state, reward, done, _ = self._env.step(action)
-        self._transition_buffer.append( (self.state.copy(), action, reward, done) )
-        self.state = self._env.reset() if done else next_state
+        self._transition_buffer.append( (self._state.copy(), action, reward, done) )
+        self._state = self._env.reset() if done else next_state
 
     def join(self):
         self._sample_queue.join()
