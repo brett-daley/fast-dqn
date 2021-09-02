@@ -31,7 +31,7 @@ class DQNAgent:
 
     def run(self, duration):
         for _ in range(self._prepopulate):
-            self._step(action=self._env.action_space.sample())
+            self._step(action=self._policy(epsilon=1.0))
         assert self._replay_memory._size_now == self._prepopulate
 
         for t in range(1, duration + 1):
@@ -42,15 +42,14 @@ class DQNAgent:
                 minibatch = self._replay_memory.sample(self._batch_size)
                 self._dqn.train(*minibatch)
 
-            self._step(action=self._policy(t))
+            epsilon = DQNAgent.epsilon_schedule(t)
+            self._step(action=self._policy(epsilon))
 
         self._env.close()
 
-    def _policy(self, t):
-        assert t > 0, "timestep must start at 1"
-
+    def _policy(self, epsilon):
+        assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
-        epsilon = self._epsilon_schedule(t)
         if np.random.rand() < epsilon:
             return self._env.action_space.sample()
 
@@ -63,7 +62,9 @@ class DQNAgent:
         self._replay_memory.save(self._state, action, reward, done)
         self._state = self._env.reset() if done else next_state
 
-    def _epsilon_schedule(self, t):
+    @staticmethod
+    def epsilon_schedule(t):
+        assert t > 0, "timestep must start at 1"
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 

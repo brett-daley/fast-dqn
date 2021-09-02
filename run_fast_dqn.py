@@ -47,7 +47,7 @@ class FastDQNAgent(DQNAgent):
     def run(self, duration):
         for t in range(self._prepopulate):
             w = self._workers[t % len(self._workers)]
-            w._step(action=self._env.action_space.sample())
+            w._step(action=w._policy(epsilon=1.0))
         self._sync_workers()
         self._flush_workers()
         assert self._replay_memory._size_now == self._prepopulate
@@ -141,14 +141,13 @@ class Worker:
     def _sample_loop(self):
         while True:
             t = self._sample_queue.get()
-            self._step(action=self._policy(t))
+            epsilon = DQNAgent.epsilon_schedule(t)
+            self._step(action=self._policy(epsilon))
             self._sample_queue.task_done()
 
-    def _policy(self, t):
-        assert t > 0, "timestep must start at 1"
-
+    def _policy(self, epsilon):
+        assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
-        epsilon = self._agent._epsilon_schedule(t)
         if self._np_random.rand() < epsilon:
             return self._env.action_space.sample()
 
