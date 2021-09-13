@@ -47,7 +47,7 @@ class FastDQNAgent(DQNAgent):
     def run(self, duration):
         for t in range(self._prepopulate):
             w = self._workers[t % len(self._workers)]
-            w._step(action=w._policy(epsilon=1.0))
+            w._step(epsilon=1.0)
         self._sync_workers()
         self._flush_workers()
         assert self._replay_memory._size_now == self._prepopulate
@@ -75,6 +75,11 @@ class FastDQNAgent(DQNAgent):
             self._workers[i].update(t)
 
             if t >= duration:
+                mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+                print("Agent: mean={}, std={}".format(mean_perf, std_perf))
+                mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
+                print("Random: mean={}, std={}".format(mean_perf, std_perf))
+
                 self._shutdown()
                 return
 
@@ -115,10 +120,11 @@ class FastDQNAgent(DQNAgent):
         for w in self._workers:
             w.close()
 
-    # These functionalities are deferred to the individual workers
-    def _policy(self, t):
-        raise NotImplementedError
-    def _step(self, action):
+    def _policy(self, state, epsilon):
+        return self._workers[0].policy(state, epsilon)
+
+    def _step(self, epsilon):
+        # This functionality is deferred to the individual workers
         raise NotImplementedError
 
 
@@ -142,17 +148,17 @@ class Worker:
         while True:
             t = self._sample_queue.get()
             epsilon = DQNAgent.epsilon_schedule(t)
-            self._step(action=self._policy(epsilon))
+            self._step(epsilon)
             self._sample_queue.task_done()
 
-    def _policy(self, epsilon):
+    def policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
         if self._np_random.rand() < epsilon:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action
-        return np.argmax(self._qvalues)
+        return np.argmax(self._get_qvalues(state))
 
     @property
     def _state(self):
@@ -162,16 +168,16 @@ class Worker:
     def _state(self, state):
         self._agent.shared_states[self._id] = state
 
-    @property
-    def _qvalues(self):
-        try:
+    def _get_qvalues(self, state):
+        if self._agent._synchronize:
             # The agent has pre-computed Q-values for us
             return self._agent.shared_qvalues[self._id]
-        except AttributeError:
+        else:
             # We use the target network here so we can train the main network in parallel
-            return self._agent._dqn.predict_target(self._state[None])[0]
+            return self._agent._dqn.predict_target(state[None])[0]
 
-    def _step(self, action):
+    def _step(self, epsilon):
+        action = self.policy(self._state, epsilon)
         next_state, reward, done, _ = self._env.step(action)
         self._transition_buffer.append( (self._state.copy(), action, reward, done) )
         self._state = self._env.reset() if done else next_state

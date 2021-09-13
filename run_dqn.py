@@ -16,6 +16,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 class DQNAgent:
     def __init__(self, make_env_fn, **kwargs):
+        self._make_env_fn = make_env_fn
         self._env = env = make_env_fn()
         assert isinstance(env.action_space, Discrete)
         self._state = env.reset()
@@ -31,7 +32,7 @@ class DQNAgent:
 
     def run(self, duration):
         for _ in range(self._prepopulate):
-            self._step(action=self._policy(epsilon=1.0))
+            self._step(epsilon=1.0)
         assert self._replay_memory._size_now == self._prepopulate
 
         for t in range(1, duration + 1):
@@ -43,21 +44,27 @@ class DQNAgent:
                 self._dqn.train(*minibatch)
 
             epsilon = DQNAgent.epsilon_schedule(t)
-            self._step(action=self._policy(epsilon))
+            self._step(epsilon)
 
-        self._env.close()
+        mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+        print("Agent: mean={}, std={}".format(mean_perf, std_perf))
+        mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
+        print("Random: mean={}, std={}".format(mean_perf, std_perf))
 
-    def _policy(self, epsilon):
+        self._shutdown()
+
+    def _policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
         if np.random.rand() < epsilon:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action
-        Q = self._dqn.predict(self._state[None])[0]
+        Q = self._dqn.predict(state[None])[0]
         return np.argmax(Q)
 
-    def _step(self, action):
+    def _step(self, epsilon):
+        action = self._policy(self._state, epsilon)
         next_state, reward, done, _ = self._env.step(action)
         self._replay_memory.save(self._state, action, reward, done)
         self._state = self._env.reset() if done else next_state
@@ -67,6 +74,31 @@ class DQNAgent:
         assert t > 0, "timestep must start at 1"
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
+
+    def benchmark(self, epsilon, episodes=30):
+        assert episodes > 0
+        env = self._make_env_fn()
+        env.enable_monitor(False)
+
+        episode_returns = []
+        for _ in range(episodes):
+            state = env.reset()
+            done = False
+            total_reward = 0.0
+
+            while not done:
+                action = self._policy(state, epsilon)
+                state, reward, done, _ = env.step(action)
+                total_reward += reward
+
+            episode_returns.append(total_reward)
+            total_reward = 0.0
+        env.close()
+
+        return np.mean(episode_returns), np.std(episode_returns, ddof=1)
+
+    def _shutdown(self):
+        self._env.close()
 
 
 def parse_kwargs():

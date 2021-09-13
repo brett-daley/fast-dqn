@@ -60,6 +60,7 @@ class AutoMonitor(gym.Wrapper):
 
     def __init__(self, env):
         super().__init__(env)
+        self._enabled = True
 
         # These metrics are reset when an episode ends:
         self._length = None
@@ -69,7 +70,7 @@ class AutoMonitor(gym.Wrapper):
         observation, reward, done, info = super().step(action)
         self._length += 1
         self._return += reward
-        if done:
+        if done and self._enabled:
             AutoMonitor.global_monitor.episode_done(self._length, self._return)
         return observation, reward, done, info
 
@@ -77,3 +78,7 @@ class AutoMonitor(gym.Wrapper):
         self._length = 0
         self._return = 0.0
         return super().reset(**kwargs)
+
+    def enable_monitor(self, boolean):
+        assert self._length in {None, 0}, "cannot enable/disable monitor during an episode"
+        self._enabled = boolean
