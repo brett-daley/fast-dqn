@@ -8,7 +8,7 @@ speedtest:
     game: pong
     workers: [1, 2, 4, 8, 16, 32]
     concurrent: [False, True]
-    synchronize: [False, True]
+    synchronized: [False, True]
     timesteps: 500000
     seed: {seeds}
 """
