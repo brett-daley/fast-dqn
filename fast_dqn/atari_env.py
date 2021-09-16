@@ -105,13 +105,20 @@ class NoopResetWrapper(gym.Wrapper):
         assert env.unwrapped.get_action_meanings()[0] == 'NOOP'
         super().__init__(env)
         self.noop_max = noop_max
+        # Use this for RNG to make instances thread safe
+        self.np_random = None
 
     def reset(self):
         observation = self.env.reset()
-        n = np.random.randint(self.noop_max + 1)
+        n = self.np_random.randint(self.noop_max + 1)
         for _ in range(n):
             observation, _, _, _ = self.step(0)
         return observation
+
+    def seed(self, seed=None):
+        seed_list = super().seed(seed)
+        self.np_random = np.random.RandomState(seed_list[0])
+        return seed_list
 
 
 class PreprocessImageWrapper(gym.ObservationWrapper):
