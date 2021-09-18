@@ -70,8 +70,11 @@ class FastDQNAgent(DQNAgent):
                     self._train_queue.join()
 
             i = t % len(self._workers)
-            if i == 1 and self._synchronize:
-                self._update_worker_qvalues()
+            if i == 1:
+                # Synchronizing here fixes a race condition that causes non-deterministic results
+                self._sync_workers()
+                if self._synchronize:
+                    self._update_worker_qvalues()
             self._workers[i].update(t)
 
             if t >= duration:
@@ -100,8 +103,6 @@ class FastDQNAgent(DQNAgent):
                 self._replay_memory.save(*transition)
 
     def _update_worker_qvalues(self):
-        self._sync_workers()
-
         # Toggle read-only
         for a in [self.shared_states, self.shared_qvalues]:
             a.flags.writeable = not a.flags.writeable
@@ -133,7 +134,6 @@ class Worker:
         self._id = worker_id
         self._env = env
         self._agent = agent
-        self._np_random = np.random.RandomState(seed=0)
 
         self._state = env.reset()
 
@@ -154,7 +154,7 @@ class Worker:
     def policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
-        if self._np_random.rand() < epsilon:
+        if self._env.action_space.np_random.rand() <= epsilon:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action

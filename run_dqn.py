@@ -56,7 +56,7 @@ class DQNAgent:
     def _policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
-        if np.random.rand() < epsilon:
+        if self._env.action_space.np_random.rand() <= epsilon:
             return self._env.action_space.sample()
 
         # Otherwise, compute the greedy (i.e. best predicted) action
