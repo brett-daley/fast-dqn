@@ -31,8 +31,7 @@ class DQNAgent:
         self._target_update_freq = 10_000
 
     def run(self, duration):
-        for _ in range(self._prepopulate):
-            self._step(epsilon=1.0)
+        self._prepopulate_replay_memory()
         assert self._replay_memory._size_now == self._prepopulate
 
         for t in range(1, duration + 1):
@@ -68,12 +67,22 @@ class DQNAgent:
         next_state, reward, done, _ = self._env.step(action)
         self._replay_memory.save(self._state, action, reward, done)
         self._state = self._env.reset() if done else next_state
+        return done
 
     @staticmethod
     def epsilon_schedule(t):
         assert t > 0, "timestep must start at 1"
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
+
+    def _prepopulate_replay_memory(self):
+        self._env.enable_monitor(False)
+        for _ in range(self._prepopulate):
+            done = self._step(epsilon=1.0)
+        while not done:
+            _, _, done, _ = self._env.step(self._env.action_space.sample())
+        self._state = self._env.reset()
+        self._env.enable_monitor(True)
 
     def benchmark(self, epsilon, episodes=30):
         assert episodes > 0

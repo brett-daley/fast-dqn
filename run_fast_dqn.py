@@ -42,9 +42,7 @@ class FastDQNAgent(DQNAgent):
         Thread(target=self._train_loop, daemon=True).start()
 
     def run(self, duration):
-        for t in range(self._prepopulate):
-            w = self._workers[t % len(self._workers)]
-            w._step(epsilon=1.0)
+        self._prepopulate_replay_memory()
         self._sync_workers()
         self._flush_workers()
         assert self._replay_memory._size_now == self._prepopulate
@@ -107,8 +105,7 @@ class FastDQNAgent(DQNAgent):
         return self._workers[0].policy(state, epsilon)
 
     def _step(self, epsilon):
-        # This functionality is deferred to the individual workers
-        raise NotImplementedError
+        return self._workers[0]._step(epsilon)
 
 
 class Worker:
