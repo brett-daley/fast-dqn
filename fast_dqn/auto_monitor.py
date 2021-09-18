@@ -1,6 +1,5 @@
-from threading import Thread
+from multiprocessing import JoinableQueue, Process
 import time
-from queue import Queue
 
 import gym
 import numpy as np
@@ -16,15 +15,16 @@ class _GlobalMonitor:
         self._all_lengths = []
         self._all_returns = []
 
-        self._task_queue = Queue()
-        Thread(target=self._task_loop, daemon=True).start()
-
         # Print the header
         self._print('episode', 'timestep', 'length', 'return', 'avg_length',
                     'avg_return', 'hours', sep=',', flush=True)
 
         # Initial time reference point
         self._start_time = time.time()
+
+        # Start monitor in a separate process
+        self._task_queue = JoinableQueue()
+        Process(target=self._task_loop, daemon=True).start()
 
     def episode_done(self, episode_length, episode_return):
         self._task_queue.put_nowait((episode_length, episode_return))
