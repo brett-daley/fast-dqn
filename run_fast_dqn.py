@@ -22,9 +22,6 @@ class FastDQNAgent(DQNAgent):
 
         self.shared_states = np.empty([workers, *envs[0].observation_space.shape], dtype=np.float32)
         self.shared_qvalues = np.empty([workers, envs[0].action_space.n], dtype=np.float32)
-        # Set permissions to avoid accidental writes
-        self.shared_states.flags.writeable = True
-        self.shared_qvalues.flags.writeable = False
 
         self._workers = tuple(Worker(i, env=envs[i], agent=self) for i in range(workers))
 
@@ -70,20 +67,24 @@ class FastDQNAgent(DQNAgent):
                     self._train_queue.join()
 
             i = t % len(self._workers)
-            if i == 1:
-                # Synchronizing here fixes a race condition that causes non-deterministic results
+            if i == 1 and self._synchronize:
                 self._sync_workers()
-                if self._synchronize:
-                    self._update_worker_qvalues()
+                # Compute the Q-values in a single minibatch
+                # We use the target network here so we can train the main network in parallel
+                self.shared_qvalues[:] = self._dqn.predict_target(self.shared_states).numpy()
             self._workers[i].update(t)
 
             if t >= duration:
+                self._train_queue.join()
+                self._sync_workers()
+
                 mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
                 print("Agent: mean={}, std={}".format(mean_perf, std_perf))
                 mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
                 print("Random: mean={}, std={}".format(mean_perf, std_perf))
 
-                self._shutdown()
+                self._train_queue.join()
+                self._sync_workers()
                 return
 
     def _train_loop(self):
@@ -101,25 +102,6 @@ class FastDQNAgent(DQNAgent):
         for w in self._workers:
             for transition in w.flush():
                 self._replay_memory.save(*transition)
-
-    def _update_worker_qvalues(self):
-        # Toggle read-only
-        for a in [self.shared_states, self.shared_qvalues]:
-            a.flags.writeable = not a.flags.writeable
-
-        # Compute the Q-values in a single minibatch
-        # We use the target network here so we can train the main network in parallel
-        self.shared_qvalues = self._dqn.predict_target(self.shared_states).numpy()
-
-        # Toggle read-only
-        for a in [self.shared_states, self.shared_qvalues]:
-            a.flags.writeable = not a.flags.writeable
-
-    def _shutdown(self):
-        self._train_queue.join()
-        self._sync_workers()
-        for w in self._workers:
-            w.close()
 
     def _policy(self, state, epsilon):
         return self._workers[0].policy(state, epsilon)
@@ -189,9 +171,6 @@ class Worker:
         for transition in self._transition_buffer:
             yield transition
         self._transition_buffer.clear()
-
-    def close(self):
-        self._env.close()
 
 
 def parse_kwargs():
