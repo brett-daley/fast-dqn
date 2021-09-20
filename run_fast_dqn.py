@@ -18,7 +18,7 @@ class FastDQNAgent(DQNAgent):
         if synchronize:
             assert workers != 1
 
-        envs = tuple(make_env_fn() for _ in range(workers))
+        envs = tuple(make_env_fn(i) for i in range(workers))
 
         self.shared_states = np.empty([workers, *envs[0].observation_space.shape], dtype=np.float32)
         self.shared_qvalues = np.empty([workers, envs[0].action_space.n], dtype=np.float32)

@@ -17,7 +17,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 class DQNAgent:
     def __init__(self, make_env_fn, **kwargs):
         self._make_env_fn = make_env_fn
-        self._env = env = make_env_fn()
+        self._env = env = make_env_fn(0)
         assert isinstance(env.action_space, Discrete)
         self._state = env.reset()
 
@@ -84,7 +84,7 @@ class DQNAgent:
 
     def benchmark(self, epsilon, episodes=30):
         assert episodes > 0
-        env = self._make_env_fn()
+        env = self._make_env_fn(0)
         env.enable_monitor(False)
 
         episode_returns = []
@@ -135,11 +135,10 @@ def main(agent_cls, kwargs):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    # TODO: Is sharing the seed here ok?
-    def make_env_fn():
+    def make_env_fn(value_added_to_seed):
         env = atari_env.make(kwargs['game'], kwargs['interp'])
-        env.seed(seed)
-        env.action_space.seed(seed)
+        env.seed(seed + value_added_to_seed)
+        env.action_space.seed(seed + value_added_to_seed)
         return env
 
     agent = agent_cls(make_env_fn, **kwargs)
