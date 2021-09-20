@@ -79,6 +79,15 @@ class DQNAgent:
         self._env.enable_monitor(False)
         for _ in range(self._prepopulate):
             self._step(epsilon=1.0)
+
+        # Finish the current episode so we can start training with a new one.
+        # Warning: This will get stuck in a loop if the episode never terminates!
+        # Our time-limit wrapper ensures that this doesn't happen.
+        done = False
+        while not done:
+            _, _, _, info = self._env.step(self._env.action_space.sample())
+            done = info['real_done']
+
         self._state = self._env.reset()
         self._env.enable_monitor(True)
 

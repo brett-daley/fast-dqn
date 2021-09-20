@@ -6,8 +6,11 @@ import gym
 import numpy as np
 
 
-class _GlobalMonitor:
+class _SharedMonitor:
     def __init__(self):
+        self.enabled = True
+        self.auto_flush = False
+
         # These metrics are never reset:
         self._episodes = 0
         self._steps = 0
@@ -66,13 +69,12 @@ class _GlobalMonitor:
 
 
 class AutoMonitor(gym.Wrapper):
-    global_monitor = _GlobalMonitor()
+    shared_monitor = _SharedMonitor()
 
     def __init__(self, env):
         super().__init__(env)
-        self._enabled = True
-        self._auto_flush = False
-        self._id = AutoMonitor.global_monitor.register_id()
+        self.monitor = AutoMonitor.shared_monitor
+        self._id = self.monitor.register_id()
 
         # These metrics are reset when an episode ends:
         self._length = None
@@ -83,9 +85,9 @@ class AutoMonitor(gym.Wrapper):
         self._length += 1
         self._return += reward
         if done:
-            if self._enabled:
-                AutoMonitor.global_monitor.episode_done(self._id, self._length, self._return)
-                if self._auto_flush:
+            if self.monitor.enabled:
+                self.monitor.episode_done(self._id, self._length, self._return)
+                if self.monitor.auto_flush:
                     self.flush_monitor()
         return observation, reward, done, info
 
@@ -94,11 +96,12 @@ class AutoMonitor(gym.Wrapper):
         self._return = 0.0
         return super().reset(**kwargs)
 
-    def enable_monitor(self, enable, auto_flush=None):
-        self._enabled = enable
-        if auto_flush is not None:
-            # Warning: do not enable auto flush if running parallel environments
-            self._auto_flush = auto_flush
+    def enable_monitor(self, enable, auto_flush=False):
+        # Warning: Do not enable auto flush if running parallel environment instances;
+        # it could cause race conditions and produce a non-deterministic log.
+        assert enable or not auto_flush, "cannot enable auto flush when monitor is disabled"
+        self.monitor.enabled = enable
+        self.monitor.auto_flush = auto_flush
 
     def flush_monitor(self):
-        AutoMonitor.global_monitor.flush()
+        self.monitor.flush()
