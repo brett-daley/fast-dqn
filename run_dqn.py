@@ -109,6 +109,16 @@ class DQNAgent:
         self._env.close()
 
 
+def allow_gpu_memory_growth():
+    try:
+        gpu_list = tf.config.list_physical_devices('GPU')
+    except AttributeError:
+        gpu_list = tf.config.experimental.list_physical_devices('GPU')
+
+    for gpu in gpu_list:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+
 def parse_kwargs():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
@@ -119,6 +129,8 @@ def parse_kwargs():
 
 
 def main(agent_cls, kwargs):
+    allow_gpu_memory_growth()
+
     seed = kwargs['seed']
     np.random.seed(seed)
     tf.random.set_seed(seed)
