@@ -43,15 +43,12 @@ class FastDQNAgent(DQNAgent):
 
     def run(self, duration):
         self._prepopulate_replay_memory()
-        self._sync_workers()
-        self._flush_workers()
+        self._sync_everything()
         assert self._replay_memory._size_now == self._prepopulate
 
         for t in itertools.count(start=1):
             if t % self._target_update_freq == 1:
-                self._train_queue.join()
-                self._sync_workers()
-                self._flush_workers()
+                self._sync_everything()
                 self._dqn.update_target_net()
 
                 if self._concurrent_training:
@@ -73,16 +70,14 @@ class FastDQNAgent(DQNAgent):
             self._workers[i].update(t)
 
             if t >= duration:
-                self._train_queue.join()
-                self._sync_workers()
+                self._sync_everything()
 
                 mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
                 print("Agent: mean={}, std={}".format(mean_perf, std_perf))
                 mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
                 print("Random: mean={}, std={}".format(mean_perf, std_perf))
 
-                self._train_queue.join()
-                self._sync_workers()
+                self._sync_everything()
                 return
 
     def _train_loop(self):
@@ -97,9 +92,15 @@ class FastDQNAgent(DQNAgent):
             w.join()
 
     def _flush_workers(self):
+        self._env.flush_monitor()
         for w in self._workers:
             for transition in w.flush():
                 self._replay_memory.save(*transition)
+
+    def _sync_everything(self):
+        self._train_queue.join()
+        self._sync_workers()
+        self._flush_workers()
 
     def _policy(self, state, epsilon):
         return self._workers[0].policy(state, epsilon)

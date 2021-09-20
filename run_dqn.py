@@ -33,6 +33,7 @@ class DQNAgent:
     def run(self, duration):
         self._prepopulate_replay_memory()
         assert self._replay_memory._size_now == self._prepopulate
+        self._env.enable_monitor(True, auto_flush=True)
 
         for t in range(1, duration + 1):
             if t % self._target_update_freq == 1:
