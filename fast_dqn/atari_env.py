@@ -14,8 +14,13 @@ def make(game, interpolation='nearest'):
     if 'FIRE' in env.unwrapped.get_action_meanings():
         env = FireResetWrapper(env)
     env = NoopResetWrapper(env)
-    # To avoid miscounts, monitor must come after no-ops and before episodic life reset
+
+    # 4,500 timesteps * 4 frames/timestep = 18,000 frames = 5 minutes of gameplay
+    env = TimeLimitWrapper(env, max_timesteps=4500)
+
+    # To avoid miscounts, monitor must come after no-ops/time limit and before episodic life reset
     env = AutoMonitor(env)
+
     env = EpisodicLifeWrapper(env)
     env = ClippedRewardWrapper(env)
     env = PreprocessImageWrapper(env, interpolation)
@@ -136,3 +141,21 @@ class PreprocessImageWrapper(gym.ObservationWrapper):
 
     def _resize(self, observation):
         return cv2.resize(observation, self._shape[:2][::-1], interpolation=self._interpolation)
+
+
+class TimeLimitWrapper(gym.Wrapper):
+    def __init__(self, env, max_timesteps):
+        super().__init__(env)
+        assert max_timesteps > 0
+        self._max_timesteps = max_timesteps
+        self._episode_steps = 0
+
+    def step(self, action):
+        self._episode_steps += 1
+        observation, reward, done, info = self.env.step(action)
+        done = done or (self._episode_steps >= self._max_timesteps)
+        return observation, reward, done, info
+
+    def reset(self):
+        self._episode_steps = 0
+        return self.env.reset()

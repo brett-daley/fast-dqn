@@ -65,10 +65,9 @@ class DQNAgent:
 
     def _step(self, epsilon):
         action = self._policy(self._state, epsilon)
-        next_state, reward, done, info = self._env.step(action)
+        next_state, reward, done, _ = self._env.step(action)
         self._replay_memory.save(self._state, action, reward, done)
         self._state = self._env.reset() if done else next_state
-        return info['real_done']
 
     @staticmethod
     def epsilon_schedule(t):
@@ -79,10 +78,7 @@ class DQNAgent:
     def _prepopulate_replay_memory(self):
         self._env.enable_monitor(False)
         for _ in range(self._prepopulate):
-            done = self._step(epsilon=1.0)
-        while not done:
-            _, _, _, info = self._env.step(self._env.action_space.sample())
-            done = info['real_done']
+            self._step(epsilon=1.0)
         self._state = self._env.reset()
         self._env.enable_monitor(True)
 

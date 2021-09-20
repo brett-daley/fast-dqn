@@ -79,7 +79,7 @@ class AutoMonitor(gym.Wrapper):
         self._return = None
 
     def step(self, action):
-        observation, reward, done, info = super().step(action)
+        observation, reward, done, info = self.env.step(action)
         self._length += 1
         self._return += reward
         if done:
@@ -95,7 +95,6 @@ class AutoMonitor(gym.Wrapper):
         return super().reset(**kwargs)
 
     def enable_monitor(self, enable, auto_flush=None):
-        assert self._length in {None, 0}, "cannot enable/disable monitor during an episode"
         self._enabled = enable
         if auto_flush is not None:
             # Warning: do not enable auto flush if running parallel environments
