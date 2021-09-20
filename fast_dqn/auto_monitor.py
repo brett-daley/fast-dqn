@@ -36,15 +36,14 @@ class _SharedMonitor:
         return int(self._i)
 
     def episode_done(self, id_number, episode_length, episode_return):
-        time_done = time.time()
         with self._lock:
             # Organized by ID number to make ordering deterministic
-            self._episode_buffer[id_number].append( (episode_length, episode_return, time_done) )
+            self._episode_buffer[id_number].append( (episode_length, episode_return) )
 
     def flush(self):
         with self._lock:
             for key in range(1, self._i + 1):
-                for episode_length, episode_return, time_done in self._episode_buffer[key]:
+                for episode_length, episode_return in self._episode_buffer[key]:
                     assert isinstance(episode_length, int)
                     assert isinstance(episode_return, float)
 
@@ -54,7 +53,7 @@ class _SharedMonitor:
                     self._all_lengths.append(episode_length)
                     self._all_returns.append(episode_return)
 
-                    hours = (time_done - self._start_time) / 3600
+                    hours = (time.time() - self._start_time) / 3600
                     avg_length = np.mean(self._all_lengths[-100:])
                     avg_return = np.mean(self._all_returns[-100:])
 
