@@ -39,6 +39,8 @@ class EpisodicLifeWrapper(gym.Wrapper):
     def step(self, action):
         self.observation, reward, done, info = self.env.step(action)
         self.was_real_done = done
+        info.update({'real_done': self.was_real_done})
+
         lives = self.env.unwrapped.ale.lives()
         if 0 < lives < self.lives:
             # We lost a life, but force a reset only if it's not game over.
