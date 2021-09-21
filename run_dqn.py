@@ -104,9 +104,9 @@ class DQNAgent:
 
             while not done:
                 action = self._policy(state, epsilon)
-                state, reward, _, info = env.step(action)
+                state, _, _, info = env.step(action)
                 done = info['real_done']
-                total_reward += reward
+                total_reward += env.last_unclipped_reward()
 
             episode_returns.append(total_reward)
             total_reward = 0.0
