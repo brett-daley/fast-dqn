@@ -25,7 +25,7 @@ class FastDQNAgent(DQNAgent):
 
         self._workers = tuple(Worker(i, env=envs[i], agent=self) for i in range(workers))
 
-        super().__init__(make_env_fn)
+        super().__init__(make_env_fn, **kwargs)
         self._env = env = self._workers[0]._env
 
         if synchronize:

@@ -2,11 +2,11 @@ import numpy as np
 
 
 class ReplayMemory:
-    def __init__(self, env, capacity):
+    def __init__(self, env, capacity, seed):
         self._capacity = capacity
         self._size_now = 0
         self._pointer = 0
-        self._np_random = np.random.RandomState(seed=0)
+        self._np_random = np.random.RandomState(seed)
 
         self.states = np.empty(shape=[capacity, *env.observation_space.shape],
                                dtype=env.observation_space.dtype)
