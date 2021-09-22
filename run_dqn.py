@@ -23,7 +23,8 @@ class DQNAgent:
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
-        self._replay_memory = ReplayMemory(env, capacity=1_000_000, seed=kwargs['seed'])
+        # TODO: We shouldn't hardcode history_len
+        self._replay_memory = ReplayMemory(env, capacity=1_000_000, history_len=4, seed=kwargs['seed'])
 
         self._prepopulate = 50_000
         self._train_freq = 4
@@ -66,7 +67,8 @@ class DQNAgent:
     def _step(self, epsilon):
         action = self._policy(self._state, epsilon)
         next_state, reward, done, _ = self._env.step(action)
-        self._replay_memory.save(self._state, action, reward, done)
+        observation = self._state[..., -1, None]
+        self._replay_memory.save(observation, action, reward, done)
         self._state = self._env.reset() if done else next_state
 
     @staticmethod

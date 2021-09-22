@@ -44,7 +44,6 @@ class FastDQNAgent(DQNAgent):
     def run(self, duration):
         self._prepopulate_replay_memory()
         self._sync_everything()
-        assert self._replay_memory._size_now == self._prepopulate
 
         for t in itertools.count(start=1):
             if t % self._target_update_freq == 1:
@@ -118,6 +117,8 @@ class Worker:
         self._state = env.reset()
 
         self._transition_buffer = []
+        self._completed_episodes = []
+
         self._sample_queue = Queue()
         Thread(target=self._sample_loop, daemon=True).start()
 
@@ -159,16 +160,25 @@ class Worker:
     def _step(self, epsilon):
         action = self.policy(self._state, epsilon)
         next_state, reward, done, _ = self._env.step(action)
-        self._transition_buffer.append( (self._state.copy(), action, reward, done) )
-        self._state = self._env.reset() if done else next_state
+
+        observation = self._state[..., -1, None]
+        self._transition_buffer.append( (observation, action, reward, done) )
+
+        if done:
+            self._completed_episodes.append(self._transition_buffer)
+            self._transition_buffer = []
+            self._state = self._env.reset()
+        else:
+            self._state = next_state
 
     def join(self):
         self._sample_queue.join()
 
     def flush(self):
-        for transition in self._transition_buffer:
-            yield transition
-        self._transition_buffer.clear()
+        for episode in self._completed_episodes:
+            for transition in episode:
+                yield transition
+        self._completed_episodes.clear()
 
 
 def parse_kwargs():

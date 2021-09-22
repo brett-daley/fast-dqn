@@ -25,9 +25,7 @@ class DeepQNetwork:
         self._target_vars = self._target_net.trainable_variables
 
     def _preprocess_states(self, states):
-        if states.dtype == tf.uint8:
-            states = tf.cast(states, tf.float32) / 255.0
-        return states
+        return tf.cast(states, tf.float32) / 255.0
 
     @tf.function
     def predict(self, states):
@@ -40,12 +38,14 @@ class DeepQNetwork:
     @tf.function
     def train(self, states, actions, rewards, next_states, dones):
         next_Q = self.predict_target(next_states)
-        targets = rewards + self.discount * (1.0 - dones) * tf.reduce_max(next_Q, axis=1)
-        mask = tf.one_hot(actions, depth=next_Q.shape[1])
+        done_mask = 1.0 - tf.cast(dones, tf.float32)
+        targets = rewards + self.discount * done_mask * tf.reduce_max(next_Q, axis=1)
+
+        action_mask = tf.one_hot(actions, depth=next_Q.shape[1])
 
         with tf.GradientTape() as tape:
             Q = self.predict(states)
-            Q = tf.reduce_sum(mask * Q, axis=1)
+            Q = tf.reduce_sum(action_mask * Q, axis=1)
             loss = tf.keras.losses.MSE(targets, Q)
 
         gradients = tape.gradient(loss, self._main_vars)
