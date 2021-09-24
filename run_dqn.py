@@ -66,8 +66,7 @@ class DQNAgent:
     def _step(self, epsilon):
         action = self._policy(self._state, epsilon)
         next_state, reward, done, info = self._env.step(action)
-        observation = self._state[..., -1, None]
-        self._replay_memory.save(observation, action, reward, done)
+        self._replay_memory.save(self._state, action, reward, done)
         self._state = self._env.reset() if done else next_state
         return next_state, reward, done, info
 

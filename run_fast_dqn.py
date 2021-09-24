@@ -161,8 +161,7 @@ class Worker:
         action = self.policy(self._state, epsilon)
         next_state, reward, done, info = self._env.step(action)
 
-        observation = self._state[..., -1, None]
-        self._transition_buffer.append( (observation, action, reward, done) )
+        self._transition_buffer.append( (self._state.copy(), action, reward, done) )
 
         if done:
             self._completed_episodes.append(self._transition_buffer)
