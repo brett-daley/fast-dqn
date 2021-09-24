@@ -48,7 +48,8 @@ class DeepQNetwork:
             Q = tf.reduce_sum(action_mask * Q, axis=1)
             loss = tf.keras.losses.MSE(targets, Q)
 
-        gradients = tape.gradient(loss, self._main_vars)
+        gradients = [tf.clip_by_value(g, -1.0, 1.0)
+                     for g in tape.gradient(loss, self._main_vars)]
         self.optimizer.apply_gradients(zip(gradients, self._main_vars))
 
     @tf.function
