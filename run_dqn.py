@@ -33,7 +33,6 @@ class DQNAgent:
 
     def run(self, duration):
         self._prepopulate_replay_memory()
-        assert self._replay_memory._size_now == self._prepopulate
         self._env.enable_monitor(True, auto_flush=True)
 
         for t in range(1, duration + 1):
@@ -66,10 +65,11 @@ class DQNAgent:
 
     def _step(self, epsilon):
         action = self._policy(self._state, epsilon)
-        next_state, reward, done, _ = self._env.step(action)
+        next_state, reward, done, info = self._env.step(action)
         observation = self._state[..., -1, None]
         self._replay_memory.save(observation, action, reward, done)
         self._state = self._env.reset() if done else next_state
+        return next_state, reward, done, info
 
     @staticmethod
     def epsilon_schedule(t):
@@ -80,17 +80,15 @@ class DQNAgent:
     def _prepopulate_replay_memory(self):
         self._env.enable_monitor(False)
         for _ in range(self._prepopulate):
-            self._step(epsilon=1.0)
+            _, _, _, info = self._step(epsilon=1.0)
 
         # Finish the current episode so we can start training with a new one.
+        # (We do this to avoid accidentally bootstrapping from the next episode.)
         # Warning: This will get stuck in a loop if the episode never terminates!
         # Our time-limit wrapper ensures that this doesn't happen.
-        done = False
-        while not done:
-            _, _, _, info = self._env.step(self._env.action_space.sample())
-            done = info['real_done']
+        while not info['real_done']:
+            _, _, _, info = self._step(epsilon=1.0)
 
-        self._state = self._env.reset()
         self._env.enable_monitor(True)
 
     def benchmark(self, epsilon, episodes=30):

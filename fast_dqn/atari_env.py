@@ -1,5 +1,3 @@
-from collections import deque
-
 import cv2
 import gym
 from gym.envs.atari.atari_env import AtariEnv
@@ -7,6 +5,7 @@ from gym.spaces import Box
 import numpy as np
 
 from fast_dqn.auto_monitor import AutoMonitor
+from fast_dqn.image_stacker import ImageStacker
 
 
 def make(game, interpolation='nearest'):
@@ -83,30 +82,20 @@ class HistoryWrapper(gym.Wrapper):
     def __init__(self, env, history_len=4):
         assert history_len > 1
         super().__init__(env)
-        self.history_len = history_len
-        self.deque = deque(maxlen=history_len)
+        self._image_stacker = ImageStacker(history_len)
 
-        self.shape = self.observation_space.shape
-        self.dtype = self.observation_space.dtype
-        self.observation_space.shape = (*self.shape[:-1], history_len * self.shape[-1])
+        shape = self.observation_space.shape
+        self.observation_space.shape = (*shape[:-1], history_len * shape[-1])
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        self.deque.append(observation)
-        return self._history(), reward, done, info
+        self._image_stacker.append(observation)
+        return self._image_stacker.get_stack(), reward, done, info
 
     def reset(self):
         observation = self.env.reset()
-        self._clear()
-        self.deque.append(observation)
-        return self._history()
-
-    def _history(self):
-        return np.concatenate(list(self.deque), axis=-1)
-
-    def _clear(self):
-        for _ in range(self.history_len):
-            self.deque.append(np.zeros(self.shape, dtype=self.dtype))
+        self._image_stacker.append(observation, reset=True)
+        return self._image_stacker.get_stack()
 
 
 class NoopResetWrapper(gym.Wrapper):

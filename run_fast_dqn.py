@@ -159,7 +159,7 @@ class Worker:
 
     def _step(self, epsilon):
         action = self.policy(self._state, epsilon)
-        next_state, reward, done, _ = self._env.step(action)
+        next_state, reward, done, info = self._env.step(action)
 
         observation = self._state[..., -1, None]
         self._transition_buffer.append( (observation, action, reward, done) )
@@ -170,6 +170,8 @@ class Worker:
             self._state = self._env.reset()
         else:
             self._state = next_state
+
+        return next_state, reward, done, info
 
     def join(self):
         self._sample_queue.join()
