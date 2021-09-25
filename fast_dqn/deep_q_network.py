@@ -46,7 +46,9 @@ class DeepQNetwork:
         with tf.GradientTape() as tape:
             Q = self.predict(states)
             Q = tf.reduce_sum(action_mask * Q, axis=1)
-            loss = tf.keras.losses.MSE(targets, Q)
+            # NOTE: Additional factor of 1/2 for consistency with original DQN implementation
+            # See https://github.com/kuz/DeepMind-Atari-Deep-Q-Learner/blob/master/dqn/NeuralQLearner.lua
+            loss = 0.5 * tf.reduce_mean(tf.square(targets - Q))
 
         gradients = [tf.clip_by_value(g, -1.0, 1.0)
                      for g in tape.gradient(loss, self._main_vars)]
