@@ -50,6 +50,10 @@ class FastDQNAgent(DQNAgent):
                 self._sync_everything()
                 self._dqn.update_target_net()
 
+                if self._evaluate:
+                    mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+                    print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+
                 if self._concurrent_training:
                     for _ in range(self._minibatches_per_epoch):
                         self._train_queue.put_nowait(None)
@@ -70,13 +74,8 @@ class FastDQNAgent(DQNAgent):
 
             if t >= duration:
                 self._sync_everything()
-
                 mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-                print("Agent: mean={}, std={}".format(mean_perf, std_perf))
-                mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
-                print("Random: mean={}, std={}".format(mean_perf, std_perf))
-
-                self._sync_everything()
+                print("Benchmark (t={}): mean={}, std={}".format(t, mean_perf, std_perf))
                 return
 
     def _train_loop(self):
@@ -190,6 +189,7 @@ def parse_kwargs():
     parser.add_argument('--workers', type=int, default=8)
     parser.add_argument('--synchronize', type=strtobool, default=True)
     parser.add_argument('--timesteps', type=int, default=5_000_000)
+    parser.add_argument('--evaluate', type=strtobool, default=True)
     parser.add_argument('--seed', type=int, default=0)
     return vars(parser.parse_args())
 

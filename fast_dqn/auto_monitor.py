@@ -8,7 +8,6 @@ import numpy as np
 
 class _SharedMonitor:
     def __init__(self):
-        self.enabled = True
         self.auto_flush = False
 
         # These metrics are never reset:
@@ -73,6 +72,7 @@ class AutoMonitor(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self.monitor = AutoMonitor.shared_monitor
+        self._enabled = True
         self._id = self.monitor.register_id()
 
         # These metrics are reset when an episode ends:
@@ -84,7 +84,7 @@ class AutoMonitor(gym.Wrapper):
         self._length += 1
         self._return += reward
         if done:
-            if self.monitor.enabled:
+            if self._enabled:
                 self.monitor.episode_done(self._id, self._length, self._return)
                 if self.monitor.auto_flush:
                     self.flush_monitor()
@@ -99,7 +99,7 @@ class AutoMonitor(gym.Wrapper):
         # Warning: Do not enable auto flush if running parallel environment instances;
         # it could cause race conditions and produce a non-deterministic log.
         assert enable or not auto_flush, "cannot enable auto flush when monitor is disabled"
-        self.monitor.enabled = enable
+        self._enabled = enable
         self.monitor.auto_flush = auto_flush
 
     def flush_monitor(self):

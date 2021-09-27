@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from distutils.util import strtobool
 import itertools
 import os
 
@@ -15,11 +16,16 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
-    def __init__(self, make_env_fn, **kwargs):
+    def __init__(self, make_env_fn, evaluate, **kwargs):
         self._make_env_fn = make_env_fn
         self._env = env = make_env_fn(0)
         assert isinstance(env.action_space, Discrete)
         self._state = env.reset()
+
+        self._evaluate = evaluate
+        if self._evaluate:
+            self._benchmark_env = make_env_fn(0)
+            self._benchmark_env.enable_monitor(False)
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -39,6 +45,10 @@ class DQNAgent:
             if t % self._target_update_freq == 1:
                 self._dqn.update_target_net()
 
+                if self._evaluate:
+                    mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+                    print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+
             if t % self._train_freq == 1:
                 minibatch = self._replay_memory.sample(self._batch_size)
                 self._dqn.train(*minibatch)
@@ -47,11 +57,7 @@ class DQNAgent:
             self._step(epsilon)
 
         mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-        print("Agent: mean={}, std={}".format(mean_perf, std_perf))
-        mean_perf, std_perf = self.benchmark(epsilon=1.0, episodes=30)
-        print("Random: mean={}, std={}".format(mean_perf, std_perf))
-
-        self._shutdown()
+        print("Benchmark (t={}): mean={}, std={}".format(t, mean_perf, std_perf))
 
     def _policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
@@ -92,8 +98,7 @@ class DQNAgent:
 
     def benchmark(self, epsilon, episodes=30):
         assert episodes > 0
-        env = self._make_env_fn(0)
-        env.enable_monitor(False)
+        env = self._benchmark_env
 
         episode_returns = []
         for _ in range(episodes):
@@ -109,12 +114,8 @@ class DQNAgent:
 
             episode_returns.append(total_reward)
             total_reward = 0.0
-        env.close()
 
         return np.mean(episode_returns), np.std(episode_returns, ddof=1)
-
-    def _shutdown(self):
-        self._env.close()
 
 
 def allow_gpu_memory_growth():
@@ -132,6 +133,7 @@ def parse_kwargs():
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
+    parser.add_argument('--evaluate', type=strtobool, default=True)
     parser.add_argument('--seed', type=int, default=0)
     return vars(parser.parse_args())
 
