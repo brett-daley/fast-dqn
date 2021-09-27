@@ -46,15 +46,22 @@ class DeepQNetwork:
         with tf.GradientTape() as tape:
             Q = self.predict(states)
             Q = tf.reduce_sum(action_mask * Q, axis=1)
-            # NOTE: Additional factor of 1/2 for consistency with original DQN implementation
-            # See https://github.com/kuz/DeepMind-Atari-Deep-Q-Learner/blob/master/dqn/NeuralQLearner.lua
-            loss = 0.5 * tf.reduce_mean(tf.square(targets - Q))
+            loss = tf.reduce_mean(huber_loss(targets - Q))
 
-        gradients = [tf.clip_by_value(g, -1.0, 1.0)
-                     for g in tape.gradient(loss, self._main_vars)]
+        gradients = tape.gradient(loss, self._main_vars)
         self.optimizer.apply_gradients(zip(gradients, self._main_vars))
 
     @tf.function
     def update_target_net(self):
         for var, target in zip(self._main_vars, self._target_vars):
             target.assign(var)
+
+
+def huber_loss(x):
+    # Huber loss: This is the correct implementation of DQN's partial derivative clipping
+    # See https://github.com/devsisters/DQN-tensorflow/issues/16
+    return tf.where(
+        tf.abs(x) <= 1.0,    # Condition
+        0.5 * tf.square(x),  # True
+        tf.abs(x) - 0.5      # False
+    )
