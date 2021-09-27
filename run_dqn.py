@@ -27,7 +27,7 @@ class DQNAgent:
             self._benchmark_env = make_env_fn(0)
             self._benchmark_env.enable_monitor(False)
 
-        optimizer = RMSprop(lr=2.5e-4, rho=0.95, momentum=0.95, epsilon=0.01)
+        optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
         # TODO: We shouldn't hardcode history_len
         self._replay_memory = ReplayMemory(env, capacity=1_000_000, history_len=4, seed=kwargs['seed'])
