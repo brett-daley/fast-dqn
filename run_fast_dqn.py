@@ -100,9 +100,6 @@ class FastDQNAgent(DQNAgent):
         self._sync_workers()
         self._flush_workers()
 
-    def _policy(self, state, epsilon):
-        return self._workers[0].policy(state, epsilon)
-
     def _step(self, epsilon):
         return self._workers[0]._step(epsilon)
 
