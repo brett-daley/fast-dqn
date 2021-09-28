@@ -30,11 +30,7 @@ def make(game, interpolation='nearest'):
 class ClippedRewardWrapper(gym.RewardWrapper):
     """Clips rewards to be in {-1, 0, +1} based on their signs."""
     def reward(self, reward):
-        self._unclipped_reward = reward
         return np.sign(reward)
-
-    def last_unclipped_reward(self):
-        return float(self._unclipped_reward)
 
 
 class EpisodicLifeWrapper(gym.Wrapper):

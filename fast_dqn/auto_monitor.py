@@ -79,21 +79,31 @@ class AutoMonitor(gym.Wrapper):
         self._length = None
         self._return = None
 
+        # Tracks the return for every episode completed *in this env instance only*
+        self._all_returns = []
+
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
         self._length += 1
         self._return += reward
+
         if done:
+            self._all_returns.append(self._return)
+
             if self._enabled:
                 self.monitor.episode_done(self._id, self._length, self._return)
                 if self.monitor.auto_flush:
                     self.flush_monitor()
+
         return observation, reward, done, info
 
     def reset(self, **kwargs):
         self._length = 0
         self._return = 0.0
         return super().reset(**kwargs)
+
+    def get_episode_returns(self):
+        return self._all_returns
 
     def enable_monitor(self, enable, auto_flush=False):
         # Warning: Do not enable auto flush if running parallel environment instances;

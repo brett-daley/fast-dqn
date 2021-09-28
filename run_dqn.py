@@ -100,22 +100,17 @@ class DQNAgent:
         assert episodes > 0
         env = self._benchmark_env
 
-        episode_returns = []
         for _ in range(episodes):
             state = env.reset()
             done = False
-            total_reward = 0.0
 
             while not done:
                 action = self._policy(state, epsilon)
                 state, _, _, info = env.step(action)
                 done = info['real_done']
-                total_reward += env.last_unclipped_reward()
 
-            episode_returns.append(total_reward)
-            total_reward = 0.0
-
-        return np.mean(episode_returns), np.std(episode_returns, ddof=1)
+        returns = env.get_episode_returns()[-episodes:]
+        return np.mean(returns), np.std(returns, ddof=1)
 
 
 def allow_gpu_memory_growth():
