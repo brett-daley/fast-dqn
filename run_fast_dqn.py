@@ -46,13 +46,18 @@ class FastDQNAgent(DQNAgent):
         self._sync_everything()
 
         for t in itertools.count(start=1):
+            if self._evaluate > 0 and t % self._evaluate == 1:
+                self._sync_everything()
+                mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+                print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+
+            if t > duration:
+                self._sync_everything()
+                return
+
             if t % self._target_update_freq == 1:
                 self._sync_everything()
                 self._dqn.update_target_net()
-
-                if self._evaluate:
-                    mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-                    print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
 
                 if self._concurrent_training:
                     for _ in range(self._minibatches_per_epoch):
@@ -71,12 +76,6 @@ class FastDQNAgent(DQNAgent):
                 # We use the target network here so we can train the main network in parallel
                 self.shared_qvalues[:] = self._dqn.predict_target(self.shared_states).numpy()
             self._workers[i].update(t)
-
-            if t >= duration:
-                self._sync_everything()
-                mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-                print("Benchmark (t={}): mean={}, std={}".format(t, mean_perf, std_perf))
-                return
 
     def _train_loop(self):
         while True:
@@ -186,7 +185,7 @@ def parse_kwargs():
     parser.add_argument('--workers', type=int, default=8)
     parser.add_argument('--synchronize', type=strtobool, default=True)
     parser.add_argument('--timesteps', type=int, default=5_000_000)
-    parser.add_argument('--evaluate', type=strtobool, default=True)
+    parser.add_argument('--evaluate', type=int, default=250_000)
     parser.add_argument('--seed', type=int, default=0)
     return vars(parser.parse_args())
 

@@ -23,7 +23,7 @@ class DQNAgent:
         self._state = env.reset()
 
         self._evaluate = evaluate
-        if self._evaluate:
+        if evaluate > 0:
             self._benchmark_env = make_env_fn(0)
             self._benchmark_env.enable_monitor(False)
 
@@ -41,13 +41,16 @@ class DQNAgent:
         self._prepopulate_replay_memory()
         self._env.enable_monitor(True, auto_flush=True)
 
-        for t in range(1, duration + 1):
-            if t % self._target_update_freq == 1:
-                self._dqn.update_target_net()
-
-                if self._evaluate:
+        for t in itertools.count(start=1):
+            if self._evaluate > 0 and t % self._evaluate == 1:
                     mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
                     print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+
+            if t > duration:
+                return
+
+            if t % self._target_update_freq == 1:
+                self._dqn.update_target_net()
 
             if t % self._train_freq == 1:
                 minibatch = self._replay_memory.sample(self._batch_size)
@@ -55,9 +58,6 @@ class DQNAgent:
 
             epsilon = DQNAgent.epsilon_schedule(t)
             self._step(epsilon)
-
-        mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-        print("Benchmark (t={}): mean={}, std={}".format(t, mean_perf, std_perf))
 
     def _policy(self, state, epsilon):
         assert 0.0 <= epsilon <= 1.0
@@ -128,7 +128,7 @@ def parse_kwargs():
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
-    parser.add_argument('--evaluate', type=strtobool, default=True)
+    parser.add_argument('--evaluate', type=int, default=250_000)
     parser.add_argument('--seed', type=int, default=0)
     return vars(parser.parse_args())
 
