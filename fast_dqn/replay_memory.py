@@ -2,9 +2,9 @@ import numpy as np
 
 
 class ReplayMemory:
-    def __init__(self, env, capacity, history_len, seed):
+    def __init__(self, env, capacity, seed):
         self._capacity = capacity
-        self._history_len = history_len
+        self._history_len = None
         self._size_now = 0
         self._pointer = 0
         self._np_random = np.random.RandomState(seed)
@@ -20,6 +20,9 @@ class ReplayMemory:
 
     def save(self, state, action, reward, done):
         observation = state[..., -1, None]
+        if self._history_len is None:
+            self._history_len = state.shape[-1]
+
         p = self._pointer
         self.observations[p], self.actions[p], self.rewards[p], self.dones[p] = observation, action, reward, done
         self._size_now = min(self._size_now + 1, self._capacity)
