@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from distutils.util import strtobool
 import itertools
 import os
+os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 from gym.spaces import Discrete
 import numpy as np
@@ -11,8 +12,6 @@ from tensorflow.keras.optimizers import RMSprop
 from fast_dqn import atari_env
 from fast_dqn.deep_q_network import DeepQNetwork
 from fast_dqn.replay_memory import ReplayMemory
-
-os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 class DQNAgent:
@@ -42,8 +41,8 @@ class DQNAgent:
 
         for t in itertools.count(start=1):
             if self._evaluate > 0 and t % self._evaluate == 1:
-                    mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-                    print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+                mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
+                print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
 
             if t > duration:
                 return
@@ -122,14 +121,14 @@ def allow_gpu_memory_growth():
         tf.config.experimental.set_memory_growth(gpu, True)
 
 
-def parse_kwargs():
+def make_parser():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--evaluate', type=int, default=250_000)
     parser.add_argument('--seed', type=int, default=0)
-    return vars(parser.parse_args())
+    return parser
 
 
 def main(agent_cls, kwargs):
@@ -150,5 +149,6 @@ def main(agent_cls, kwargs):
 
 
 if __name__ == '__main__':
-    kwargs = parse_kwargs()
+    parser = make_parser()
+    kwargs = vars(parser.parse_args())
     main(DQNAgent, kwargs)
