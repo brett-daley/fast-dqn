@@ -14,8 +14,8 @@ def make(game, interpolation='nearest'):
         env = FireResetWrapper(env)
     env = NoopResetWrapper(env)
 
-    # 4,500 timesteps * 4 frames/timestep = 18,000 frames = 5 minutes of gameplay
-    env = TimeLimitWrapper(env, max_timesteps=4500)
+    # 27k timesteps * 4 frames/timestep = 108k frames = 30 minutes of gameplay
+    env = TimeLimitWrapper(env, max_timesteps=27_000)
 
     # To avoid miscounts, monitor must come after no-ops/time limit and before episodic life reset
     env = AutoMonitor(env)
@@ -43,14 +43,21 @@ class EpisodicLifeWrapper(gym.Wrapper):
     def step(self, action):
         self.observation, reward, done, info = self.env.step(action)
         self.was_real_done = done
-        info.update({'real_done': self.was_real_done})
 
         lives = self.env.unwrapped.ale.lives()
-        if 0 < lives < self.lives:
+        if lives < self.lives:
             # We lost a life, but force a reset only if it's not game over.
             # Otherwise, the environment just handles it automatically.
-            done = True
+            if lives > 0:
+                done = True
+            # HACK: Force a reset when it's game over too. Temporary workaround to
+            # address a bug in the ALE where some games may not terminate correctly.
+            # https://github.com/mgbellemare/Arcade-Learning-Environment/issues/434
+            if lives == 0:
+                self.was_real_done = done = True
         self.lives = lives
+
+        info.update({'real_done': self.was_real_done})
         return self.observation, reward, done, info
 
     def reset(self):
