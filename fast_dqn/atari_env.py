@@ -4,27 +4,32 @@ from gym.envs.atari.atari_env import AtariEnv
 from gym.spaces import Box
 import numpy as np
 
-from fast_dqn.auto_monitor import AutoMonitor
 from fast_dqn.image_stacker import ImageStacker
+from fast_dqn.monitor import Monitor, VecMonitor
+from fast_dqn.vec_env import CustomVecEnv
 
 
-def make(game, interpolation='nearest'):
-    env = AtariEnv(game, frameskip=4, obs_type='image')
-    if 'FIRE' in env.unwrapped.get_action_meanings():
-        env = FireResetWrapper(env)
-    env = NoopResetWrapper(env)
+def make(game, instances=1, interpolation='nearest'):
+    def make_env_instance():
+        env = AtariEnv(game, frameskip=4, obs_type='image')
+        if 'FIRE' in env.unwrapped.get_action_meanings():
+            env = FireResetWrapper(env)
+        env = NoopResetWrapper(env)
 
-    # 27k timesteps * 4 frames/timestep = 108k frames = 30 minutes of gameplay
-    env = TimeLimitWrapper(env, max_timesteps=27_000)
+        # 27k timesteps * 4 frames/timestep = 108k frames = 30 minutes of gameplay
+        env = TimeLimitWrapper(env, max_timesteps=27_000)
 
-    # To avoid miscounts, monitor must come after no-ops/time limit and before episodic life reset
-    env = AutoMonitor(env)
+        # To avoid miscounts, monitor must come after no-ops/time limit and before episodic life reset
+        env = Monitor(env)
 
-    env = EpisodicLifeWrapper(env)
-    env = ClippedRewardWrapper(env)
-    env = PreprocessImageWrapper(env, interpolation)
-    env = HistoryWrapper(env, history_len=4)
-    return env
+        env = EpisodicLifeWrapper(env)
+        env = ClippedRewardWrapper(env)
+        env = PreprocessImageWrapper(env, interpolation)
+        env = HistoryWrapper(env, history_len=4)
+        return env
+
+    vec_env = CustomVecEnv(env_fns=[lambda: make_env_instance() for _ in range(instances)])
+    return VecMonitor(vec_env)
 
 
 class ClippedRewardWrapper(gym.RewardWrapper):

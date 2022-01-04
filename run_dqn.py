@@ -15,16 +15,12 @@ from fast_dqn.replay_memory import ReplayMemory
 
 
 class DQNAgent:
-    def __init__(self, make_env_fn, evaluate, **kwargs):
-        self._make_env_fn = make_env_fn
-        self._env = env = make_env_fn(0)
-        assert isinstance(env.action_space, Discrete)
-        self._state = env.reset()
+    def __init__(self, make_vec_env_fn, eval_freq, **kwargs):
+        self._make_vec_env_fn = make_vec_env_fn
+        self._vec_env = env = make_vec_env_fn(instances=1)
+        self.action_space = self._vec_env.action_space
 
-        self._evaluate = evaluate
-        if evaluate > 0:
-            self._benchmark_env = make_env_fn(0)
-            self._benchmark_env.enable_monitor(False)
+        self._eval_freq = eval_freq
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -36,13 +32,22 @@ class DQNAgent:
         self._target_update_freq = 10_000
 
     def run(self, duration):
-        self._prepopulate_replay_memory()
-        self._env.enable_monitor(True, auto_flush=True)
+        eval_env = self._eval_vec_env = self._make_vec_env_fn(instances=1)
+        eval_env.silence_monitor(True)
+
+        prepop_env = self._make_vec_env_fn(instances=1)
+        prepop_env.silence_monitor(True)
+        states = prepop_env.reset()
+        for _ in range(self._prepopulate):
+            states = self._step(prepop_env, states, epsilon=1.0)
+
+        env = self._vec_env
+        states = env.reset()
 
         for t in itertools.count(start=1):
-            if self._evaluate > 0 and t % self._evaluate == 1:
-                mean_perf, std_perf = self.benchmark(epsilon=0.05, episodes=30)
-                print("Benchmark (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
+            if self._eval_freq > 0 and (t % self._eval_freq) == 1:
+                mean_perf, std_perf = self.evaluate(epsilon=0.05, episodes=30)
+                print("Evaluation (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
 
             if t > duration:
                 return
@@ -55,24 +60,30 @@ class DQNAgent:
                 self._dqn.train(*minibatch)
 
             epsilon = DQNAgent.epsilon_schedule(t)
-            self._step(epsilon)
+            states, _, _, _ = self._step(env, states, epsilon)
 
-    def _policy(self, state, epsilon):
+    def _policy(self, states, epsilon):
         assert 0.0 <= epsilon <= 1.0
-        # With probability epsilon, take a random action
-        if self._env.action_space.np_random.rand() <= epsilon:
-            return self._env.action_space.sample()
+        # Compute random actions
+        N = len(states)
+        random_actions = np.stack([self.action_space.sample() for _ in range(N)])
 
-        # Otherwise, compute the greedy (i.e. best predicted) action
-        Q = self._dqn.predict(state[None])[0]
-        return np.argmax(Q)
+        if epsilon == 1.0:
+            return random_actions
 
-    def _step(self, epsilon):
-        action = self._policy(self._state, epsilon)
-        next_state, reward, done, info = self._env.step(action)
-        self._replay_memory.save(self._state, action, reward, done)
-        self._state = self._env.reset() if done else next_state
-        return next_state, reward, done, info
+        # Compute the greedy (i.e. best predicted) actions
+        greedy_actions = np.argmax(self._dqn.predict(states), axis=1)
+
+        # With probability epsilon, take the random action, otherwise greedy
+        rng = self.action_space.np_random.rand(N)
+        return np.where(rng <= epsilon, random_actions, greedy_actions)
+
+    def _step(self, vec_env, states, epsilon):
+        actions = self._policy(states, epsilon)
+        next_states, rewards, dones, infos = vec_env.step(actions)
+        # TODO: Remove this workaround after refactoring the replay memory
+        self._replay_memory.save(states[0], actions[0], rewards[0], dones[0])
+        return next_states, rewards, dones, infos
 
     @staticmethod
     def epsilon_schedule(t):
@@ -80,23 +91,9 @@ class DQNAgent:
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
 
-    def _prepopulate_replay_memory(self):
-        self._env.enable_monitor(False)
-        for _ in range(self._prepopulate):
-            _, _, _, info = self._step(epsilon=1.0)
-
-        # Finish the current episode so we can start training with a new one.
-        # (We do this to avoid accidentally bootstrapping from the next episode.)
-        # Warning: This will get stuck in a loop if the episode never terminates!
-        # Our time-limit wrapper ensures that this doesn't happen.
-        while not info['real_done']:
-            _, _, _, info = self._step(epsilon=1.0)
-
-        self._env.enable_monitor(True)
-
-    def benchmark(self, epsilon, episodes=30):
+    def evaluate(self, epsilon, episodes=30):
         assert episodes > 0
-        env = self._benchmark_env
+        env = self._eval_vec_env
 
         for _ in range(episodes):
             state = env.reset()
@@ -105,7 +102,7 @@ class DQNAgent:
             while not done:
                 action = self._policy(state, epsilon)
                 state, _, _, info = env.step(action)
-                done = info['real_done']
+                done = info[0]['real_done']
 
         returns = env.get_episode_returns()[-episodes:]
         return np.mean(returns), np.std(returns, ddof=1)
@@ -135,16 +132,16 @@ def main(agent_cls, kwargs):
     allow_gpu_memory_growth()
 
     seed = kwargs['seed']
+
+    def make_vec_env_fn(instances):
+        env = atari_env.make(kwargs['game'], 1, kwargs['interp'])
+        env.seed(seed)
+        return env
+
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    def make_env_fn(value_added_to_seed):
-        env = atari_env.make(kwargs['game'], kwargs['interp'])
-        env.seed(seed + value_added_to_seed)
-        env.action_space.seed(seed + value_added_to_seed)
-        return env
-
-    agent = agent_cls(make_env_fn, **kwargs)
+    agent = agent_cls(make_vec_env_fn, kwargs['evaluate'], **kwargs)
     agent.run(kwargs['timesteps'])
 
 
