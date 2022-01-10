@@ -15,9 +15,9 @@ from fast_dqn.replay_memory import ReplayMemory
 
 
 class DQNAgent:
-    def __init__(self, make_vec_env_fn, eval_freq, **kwargs):
+    def __init__(self, make_vec_env_fn, instances, eval_freq, **kwargs):
         self._make_vec_env_fn = make_vec_env_fn
-        self._vec_env = env = make_vec_env_fn(instances=1)
+        self._vec_env = env = make_vec_env_fn(instances)
         self.action_space = self._vec_env.action_space
 
         self._eval_freq = eval_freq
@@ -64,19 +64,14 @@ class DQNAgent:
 
     def _policy(self, states, epsilon):
         assert 0.0 <= epsilon <= 1.0
-        # Compute random actions
-        N = len(states)
-        random_actions = np.stack([self.action_space.sample() for _ in range(N)])
+        # With probability epsilon, take a random action
+        if self.action_space.np_random.rand() <= epsilon:
+            return self._random_actions(n=1)
+        # Otherwise, compute the greedy (i.e. best predicted) action
+        return np.argmax(self._dqn.predict(states), axis=1)
 
-        if epsilon == 1.0:
-            return random_actions
-
-        # Compute the greedy (i.e. best predicted) actions
-        greedy_actions = np.argmax(self._dqn.predict(states), axis=1)
-
-        # With probability epsilon, take the random action, otherwise greedy
-        rng = self.action_space.np_random.rand(N)
-        return np.where(rng <= epsilon, random_actions, greedy_actions)
+    def _random_actions(self, n):
+        return np.stack([self.action_space.sample() for _ in range(n)])
 
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)
@@ -134,14 +129,15 @@ def main(agent_cls, kwargs):
     seed = kwargs['seed']
 
     def make_vec_env_fn(instances):
-        env = atari_env.make(kwargs['game'], 1, kwargs['interp'])
+        env = atari_env.make(kwargs['game'], instances, kwargs['interp'])
         env.seed(seed)
         return env
 
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    agent = agent_cls(make_vec_env_fn, kwargs['evaluate'], **kwargs)
+    workers = kwargs.pop('workers', 1)
+    agent = agent_cls(make_vec_env_fn, workers, kwargs['evaluate'], **kwargs)
     agent.run(kwargs['timesteps'])
 
 
