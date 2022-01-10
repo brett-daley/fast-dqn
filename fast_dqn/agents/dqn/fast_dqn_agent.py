@@ -1,15 +1,7 @@
-from argparse import ArgumentParser
-from distutils.util import strtobool
-import itertools
-import os
-os.environ['TF_DETERMINISTIC_OPS'] = '1'
-
-import numpy as np
-
-from run_dqn import DQNAgent, main, make_parser
+from fast_dqn.agents.dqn.baseline_dqn_agent import BaselineDQNAgent
 
 
-class FastDQNAgent(DQNAgent):
+class FastDQNAgent(BaselineDQNAgent):
     def __init__(self, make_vec_env_fn, workers, eval_freq, concurrent=True, synchronize=True, **kwargs):
         assert workers >= 1
         if synchronize:
@@ -41,12 +33,3 @@ class FastDQNAgent(DQNAgent):
         # With probability epsilon, take the random action, otherwise greedy
         rng = self.action_space.np_random.rand(N)
         return np.where(rng <= epsilon, random_actions, greedy_actions)
-
-
-if __name__ == '__main__':
-    parser = make_parser()
-    parser.add_argument('--concurrent', type=strtobool, default=True)
-    parser.add_argument('--workers', type=int, default=8)
-    parser.add_argument('--synchronize', type=strtobool, default=True)
-    kwargs = vars(parser.parse_args())
-    main(FastDQNAgent, kwargs)
