@@ -11,6 +11,8 @@ from fast_dqn.replay_memory import ReplayMemory
 class BaselineDQNAgent:
     def __init__(self, make_vec_env_fn, instances, eval_freq, **kwargs):
         self._make_vec_env_fn = make_vec_env_fn
+        self._instances = instances
+
         self._vec_env = env = make_vec_env_fn(instances)
         self.action_space = self._vec_env.action_space
 
@@ -29,11 +31,11 @@ class BaselineDQNAgent:
         eval_env = self._eval_vec_env = self._make_vec_env_fn(instances=1)
         eval_env.silence_monitor(True)
 
-        prepop_env = self._make_vec_env_fn(instances=1)
+        prepop_env = self._make_vec_env_fn(self._instances)
         prepop_env.silence_monitor(True)
         states = prepop_env.reset()
         for _ in range(self._prepopulate):
-            states = self._step(prepop_env, states, epsilon=1.0)
+            states, _, _, _ = self._step(prepop_env, states, epsilon=1.0)
 
         env = self._vec_env
         states = env.reset()
@@ -70,8 +72,7 @@ class BaselineDQNAgent:
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)
         next_states, rewards, dones, infos = vec_env.step(actions)
-        # TODO: Remove this workaround after refactoring the replay memory
-        self._replay_memory.save(states[0], actions[0], rewards[0], dones[0])
+        self._replay_memory.save(states, actions, rewards, dones)
         return next_states, rewards, dones, infos
 
     @staticmethod

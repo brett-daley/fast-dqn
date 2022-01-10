@@ -1,3 +1,5 @@
+import numpy as np
+
 from fast_dqn.agents.dqn.baseline_dqn_agent import BaselineDQNAgent
 
 
