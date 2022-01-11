@@ -34,9 +34,13 @@ class BaselineDQNAgent:
         prepop_env = self._make_vec_env_fn(self._instances)
         prepop_env.silence_monitor(True)
         states = prepop_env.reset()
-        for _ in range(self._prepopulate):
+        assert (self._prepopulate % self._instances) == 0
+        for _ in range(self._prepopulate // self._instances):
             states, _, _, _ = self._step(prepop_env, states, epsilon=1.0)
 
+        self._training_loop(duration)
+
+    def _training_loop(self, duration):
         env = self._vec_env
         states = env.reset()
 
