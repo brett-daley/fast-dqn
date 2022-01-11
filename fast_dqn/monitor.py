@@ -23,13 +23,6 @@ class VecMonitor:
         self._all_lengths = []
         self._all_returns = []
 
-        # Print the header
-        self._print('episode', 'timestep', 'length', 'return', 'avg_length',
-                    'avg_return', 'hours', sep=',', flush=True)
-
-        # Initial time reference point
-        self._start_time = time.time()
-
     @property
     def observation_space(self):
         return self.env.observation_space
@@ -42,15 +35,18 @@ class VecMonitor:
         observations, rewards, dones, infos = self.env.step(actions)
 
         if self._enabled:
-            self._steps += self.num_envs
-
             if any(dones):
                 self._log_done_episodes()
 
         return observations, rewards, dones, infos
 
-    # TODO: Inherit from VecEnvWrapper
     def reset(self):
+        if self._steps == 0:
+            # Print the header
+            self._print('episode', 'timestep', 'length', 'return', 'avg_length',
+                'avg_return', 'hours', sep=',', flush=True)
+            # Initial time reference point
+            self._start_time = time.time()
         return self.env.reset()
 
     def seed(self, seed=None):
@@ -67,6 +63,7 @@ class VecMonitor:
                 assert isinstance(length, int)
                 assert isinstance(ret, float)
                 self._episodes += 1
+                self._steps += length
 
                 self._all_lengths.append(length)
                 self._all_returns.append(ret)
@@ -75,11 +72,12 @@ class VecMonitor:
                 avg_length = np.mean(self._all_lengths[-100:])
                 avg_return = np.mean(self._all_returns[-100:])
 
-                if not self._silent:
-                    self._print(self._episodes, self._steps, length, ret, avg_length,
-                                avg_return, '{:.3f}'.format(hours), sep=',', flush=True)
+                self._print(self._episodes, self._steps, length, ret, avg_length,
+                            avg_return, '{:.3f}'.format(hours), sep=',', flush=True)
 
     def _print(self, *args, **kwargs):
+        if self._silent:
+            return
         print("AM", end=':')
         print(*args, **kwargs)
 
