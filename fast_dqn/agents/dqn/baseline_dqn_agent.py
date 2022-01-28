@@ -3,9 +3,7 @@ import itertools
 import numpy as np
 from tensorflow.keras.optimizers import RMSprop
 
-from fast_dqn import atari_env
 from fast_dqn.deep_q_network import DeepQNetwork
-from fast_dqn.replay_memory import ReplayMemory
 
 
 class BaselineDQNAgent:
@@ -20,7 +18,6 @@ class BaselineDQNAgent:
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
-        self._replay_memory = ReplayMemory(env, capacity=1_000_000, seed=kwargs['seed'])
 
         self._prepopulate = 50_000
         self._train_freq = 4
@@ -29,10 +26,10 @@ class BaselineDQNAgent:
 
     def run(self, duration):
         eval_env = self._eval_vec_env = self._make_vec_env_fn(instances=1)
-        eval_env.silence_monitor(True)
+        # eval_env.silence_monitor(True)
 
         prepop_env = self._make_vec_env_fn(self._instances)
-        prepop_env.silence_monitor(True)
+        # prepop_env.silence_monitor(True)
         states = prepop_env.reset()
         assert (self._prepopulate % self._instances) == 0
         for _ in range(self._prepopulate // self._instances):
@@ -56,7 +53,7 @@ class BaselineDQNAgent:
                 self._dqn.update_target_net()
 
             if t % self._train_freq == 1:
-                minibatch = self._replay_memory.sample(self._batch_size)
+                minibatch = env.replay_memory.sample(self._batch_size)
                 self._dqn.train(*minibatch)
 
             epsilon = BaselineDQNAgent.epsilon_schedule(t)
@@ -76,7 +73,8 @@ class BaselineDQNAgent:
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)
         next_states, rewards, dones, infos = vec_env.step(actions)
-        self._replay_memory.save(states, actions, rewards, dones)
+        # Saves to main replay memory regardless of passed-in env!
+        self._vec_env.replay_memory.save(states, actions, rewards, dones)
         return next_states, rewards, dones, infos
 
     @staticmethod

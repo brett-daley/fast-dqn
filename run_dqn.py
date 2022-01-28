@@ -6,7 +6,7 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 import numpy as np
 import tensorflow as tf
 
-from fast_dqn import atari_env
+from fast_dqn import environment
 from fast_dqn.agents import DQNAgent
 
 
@@ -23,7 +23,6 @@ def allow_gpu_memory_growth():
 def make_parser():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
-    parser.add_argument('--interp', type=str, default='linear')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--evaluate', type=int, default=250_000)
     parser.add_argument('--num_envs', type=int, default=8)
@@ -35,14 +34,10 @@ def main(agent_cls, kwargs):
     allow_gpu_memory_growth()
 
     seed = kwargs['seed']
-
-    def make_vec_env_fn(instances):
-        env = atari_env.make(kwargs['game'], instances, kwargs['interp'])
-        env.seed(seed)
-        return env
-
     np.random.seed(seed)
     tf.random.set_seed(seed)
+
+    make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, seed)
 
     agent = agent_cls(make_vec_env_fn, kwargs['num_envs'], kwargs['evaluate'], **kwargs)
     agent.run(kwargs['timesteps'])

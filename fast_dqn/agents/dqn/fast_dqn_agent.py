@@ -43,7 +43,7 @@ class FastDQNAgent(BaselineDQNAgent):
                     self._dqn.update_target_net()
 
                 if t % self._train_freq == 1:
-                    minibatch = self._replay_memory.sample(self._batch_size)
+                    minibatch = env.replay_memory.sample(self._batch_size)
                     self._dqn.train(*minibatch)
 
             epsilon = BaselineDQNAgent.epsilon_schedule(end)
