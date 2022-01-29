@@ -48,18 +48,3 @@ class FastDQNAgent(BaselineDQNAgent):
 
             epsilon = BaselineDQNAgent.epsilon_schedule(end)
             states, _, _, _ = self._step(env, states, epsilon)
-
-    def _policy(self, states, epsilon):
-        assert 0.0 <= epsilon <= 1.0
-        # Compute random actions
-        N = len(states)
-        random_actions = self._random_actions(n=N)
-        if epsilon == 1.0:
-            return random_actions
-
-        # Compute the greedy (i.e. best predicted) actions
-        greedy_actions = np.argmax(self._dqn.predict(states), axis=1)
-
-        # With probability epsilon, take the random action, otherwise greedy
-        rng = self.action_space.np_random.rand(N)
-        return np.where(rng <= epsilon, random_actions, greedy_actions)
