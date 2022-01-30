@@ -4,7 +4,7 @@ from gym.envs.atari.atari_env import AtariEnv
 from gym.spaces import Box
 import numpy as np
 
-from fast_dqn.environment.auto_monitor import AutoMonitor
+from fast_dqn.environment.monitor import Monitor
 from fast_dqn.environment.image_stacker import ImageStacker
 
 
@@ -18,7 +18,7 @@ def make(game, interpolation='nearest'):
     env = TimeLimitWrapper(env, max_timesteps=27_000)
 
     # To avoid miscounts, monitor must come after no-ops/time limit and before episodic life reset
-    env = AutoMonitor(env)
+    env = Monitor(env)
 
     env = EpisodicLifeWrapper(env)
     env = ClippedRewardWrapper(env)

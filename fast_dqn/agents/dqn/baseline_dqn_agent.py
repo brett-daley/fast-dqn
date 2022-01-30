@@ -4,6 +4,7 @@ import numpy as np
 from tensorflow.keras.optimizers import RMSprop
 
 from fast_dqn.deep_q_network import DeepQNetwork
+from fast_dqn.environment import VecMonitor
 
 
 class BaselineDQNAgent:
@@ -11,7 +12,7 @@ class BaselineDQNAgent:
         self._make_vec_env_fn = make_vec_env_fn
         self._instances = instances
 
-        self._vec_env = env = make_vec_env_fn(instances)
+        self._vec_env = env = VecMonitor(make_vec_env_fn(instances))
         self.action_space = self._vec_env.action_space
 
         self._eval_freq = eval_freq
@@ -26,10 +27,8 @@ class BaselineDQNAgent:
 
     def run(self, duration):
         eval_env = self._eval_vec_env = self._make_vec_env_fn(instances=1)
-        # eval_env.silence_monitor(True)
 
         prepop_env = self._make_vec_env_fn(self._instances)
-        # prepop_env.silence_monitor(True)
         states = prepop_env.reset()
         assert (self._prepopulate % self._instances) == 0
         for _ in range(self._prepopulate // self._instances):

@@ -1,4 +1,5 @@
 from fast_dqn.environment import atari_env
+from fast_dqn.environment.monitor import VecMonitor
 from fast_dqn.environment.replay_memory import ReplayMemory
 from fast_dqn.environment.thread_vec_env import ThreadVecEnv
 
