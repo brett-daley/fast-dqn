@@ -65,7 +65,7 @@ class BaselineDQNAgent:
             # None signals random action for the envs
             return self._instances * [None]
         # Otherwise, compute the greedy (i.e. best predicted) action
-        return np.argmax(self._dqn.predict(states), axis=1)
+        return self._dqn.greedy_actions(states).numpy()
 
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)

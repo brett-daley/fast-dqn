@@ -36,6 +36,11 @@ class DeepQNetwork:
         return self._target_net(self._preprocess_states(states))
 
     @tf.function
+    def greedy_actions(self, states):
+        Q = self.predict(states)
+        return tf.argmax(Q, axis=1)
+
+    @tf.function
     def train(self, states, actions, rewards, next_states, dones):
         next_Q = self.predict_target(next_states)
         done_mask = 1.0 - tf.cast(dones, tf.float32)
