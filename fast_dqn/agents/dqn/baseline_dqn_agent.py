@@ -60,15 +60,12 @@ class BaselineDQNAgent:
 
     def _policy(self, states, epsilon):
         assert 0.0 <= epsilon <= 1.0
-        N = len(states)
         # With probability epsilon, take a random action
         if self.action_space.np_random.rand() <= epsilon:
-            return self._random_actions(N)
+            # None signals random action for the envs
+            return self._instances * [None]
         # Otherwise, compute the greedy (i.e. best predicted) action
         return np.argmax(self._dqn.predict(states), axis=1)
-
-    def _random_actions(self, n):
-        return np.stack([self.action_space.sample() for _ in range(n)])
 
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)
