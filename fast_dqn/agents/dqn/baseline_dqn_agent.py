@@ -16,6 +16,7 @@ class BaselineDQNAgent:
         self.action_space = self._vec_env.action_space
 
         self._eval_freq = eval_freq
+        # TODO: This is allocating its own replay memory. We need to add an option to disable.
         self._eval_vec_env = self._make_vec_env_fn(instances=1)
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
@@ -28,7 +29,6 @@ class BaselineDQNAgent:
 
     def run(self, duration):
         env = self._vec_env
-        env.allocate_replay_memory()
         states = env.reset()
         assert (self._prepopulate % self._instances) == 0
         for _ in range(self._prepopulate // self._instances):

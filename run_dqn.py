@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from fast_dqn import environment
 from fast_dqn.agents import DQNAgent
+from fast_dqn.environment.replay_memory import ReplayMemory
 
 
 def allow_gpu_memory_growth():
@@ -37,10 +38,17 @@ def main(agent_cls, kwargs):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    rmem_capacity = 1_000_000
-    make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, rmem_capacity, seed)
+    num_envs = kwargs['num_envs']
+    assert (1_000_000 % num_envs) == 0
+    rmem_capacity = 1_000_000 // num_envs
+    def rmem_fn():
+        rmem = ReplayMemory(rmem_capacity)
+        rmem.seed(seed)
+        return rmem
 
-    agent = agent_cls(make_vec_env_fn, kwargs['num_envs'], kwargs['evaluate'], **kwargs)
+    make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, rmem_fn, seed)
+
+    agent = agent_cls(make_vec_env_fn, num_envs, kwargs['evaluate'], **kwargs)
     agent.run(kwargs['timesteps'])
 
 

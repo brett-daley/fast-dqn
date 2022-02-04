@@ -10,7 +10,6 @@ class VecMonitor:
     def __init__(self, vec_env):
         assert isinstance(vec_env, ThreadVecEnv)
         self.env = vec_env
-        self._envs = vec_env._envs
 
         # These metrics are never reset:
         self._episodes = 0
@@ -27,7 +26,7 @@ class VecMonitor:
         observations, rewards, dones, infos = self.env.step(actions)
         for i, done in enumerate(dones):
             if done:
-                self._log_episode(*self._envs[i].last_episode)
+                self._log_episode(*self.env.get_last_episode(env_id=i))
         return observations, rewards, dones, infos
 
     def reset(self):

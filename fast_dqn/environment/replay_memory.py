@@ -2,8 +2,7 @@ import numpy as np
 
 
 class ReplayMemory:
-    def __init__(self, action_space, capacity):
-        self._action_space = action_space
+    def __init__(self, capacity):
         self._capacity = capacity
         self._history_len = None
         self._size_now = 0
@@ -14,11 +13,11 @@ class ReplayMemory:
     def seed(self, seed):
         self._np_random = np.random.RandomState(seed)
 
-    def _allocate(self, observations):
+    def _allocate(self, observations, actions):
         # Allocate memory for the buffers
         self.observations = np.empty([self._capacity, *observations.shape],
                                      dtype=observations.dtype)
-        self.actions = np.empty([self._capacity], dtype=self._action_space.dtype)
+        self.actions = np.empty([self._capacity], dtype=actions.dtype)
         self.rewards = np.empty([self._capacity], dtype=np.float32)
         self.dones = np.empty([self._capacity], dtype=np.bool)
 
@@ -27,7 +26,7 @@ class ReplayMemory:
         observations = states[..., -1, None]
 
         if not self._allocated:
-            self._allocate(observations)
+            self._allocate(observations, actions)
             self._allocated = True
             self._history_len = states.shape[-1]
 
