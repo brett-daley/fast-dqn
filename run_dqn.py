@@ -37,7 +37,8 @@ def main(agent_cls, kwargs):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, seed)
+    rmem_capacity = 1_000_000
+    make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, rmem_capacity, seed)
 
     agent = agent_cls(make_vec_env_fn, kwargs['num_envs'], kwargs['evaluate'], **kwargs)
     agent.run(kwargs['timesteps'])

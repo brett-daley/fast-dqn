@@ -2,28 +2,25 @@ import numpy as np
 
 
 class ReplayMemory:
-    def __init__(self, env, capacity, seed):
-        self._env = env
-        self._nominal_capacity = capacity
+    def __init__(self, action_space, capacity):
+        self._action_space = action_space
+        self._capacity = capacity
         self._history_len = None
         self._size_now = 0
         self._pointer = 0
-        self._np_random = np.random.RandomState(seed)
-
+        self._np_random = None
         self._allocated = False
 
-    def _allocate(self, observations):
-        # Divide the nominal capacity by the number of environments
-        self._num_envs = observations.shape[0]
-        assert (self._nominal_capacity % self._num_envs) == 0
-        self._capacity = self._nominal_capacity // self._num_envs
+    def seed(self, seed):
+        self._np_random = np.random.RandomState(seed)
 
+    def _allocate(self, observations):
         # Allocate memory for the buffers
         self.observations = np.empty([self._capacity, *observations.shape],
-                                        dtype=observations.dtype)
-        self.actions = np.empty([self._capacity, self._num_envs], dtype=self._env.action_space.dtype)
-        self.rewards = np.empty([self._capacity, self._num_envs], dtype=np.float32)
-        self.dones = np.empty([self._capacity, self._num_envs], dtype=np.bool)
+                                     dtype=observations.dtype)
+        self.actions = np.empty([self._capacity], dtype=self._action_space.dtype)
+        self.rewards = np.empty([self._capacity], dtype=np.float32)
+        self.dones = np.empty([self._capacity], dtype=np.bool)
 
     def save(self, states, actions, rewards, dones):
         # NOTE: Assumes observations are stacked on last axis to form states
@@ -44,12 +41,7 @@ class ReplayMemory:
         x = self._absolute_location(indices)
         states = self._get_states(indices)
         next_states = self._get_states(indices + 1)
-        vec_minibatch = tuple((states, self.actions[x], self.rewards[x], next_states, self.dones[x]))
-
-        # So far, we have a minibatch of `num_env * batch_size` samples.
-        # We need to randomly sample from axis 1 to get down to `batch_size` samples.
-        rand_ints = self._np_random.randint(self._num_envs, size=batch_size)
-        return map(lambda x: x[np.arange(batch_size), rand_ints], vec_minibatch)
+        return (states, self.actions[x], self.rewards[x], next_states, self.dones[x])
 
     def _get_states(self, indices):
         # NOTE: Indices must be relative to the pointer

@@ -12,10 +12,11 @@ class BaselineDQNAgent:
         self._make_vec_env_fn = make_vec_env_fn
         self._instances = instances
 
-        self._vec_env = env = VecMonitor(make_vec_env_fn(instances))
+        self._vec_env = env = make_vec_env_fn(instances)
         self.action_space = self._vec_env.action_space
 
         self._eval_freq = eval_freq
+        self._eval_vec_env = self._make_vec_env_fn(instances=1)
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -26,18 +27,17 @@ class BaselineDQNAgent:
         self._target_update_freq = 10_000
 
     def run(self, duration):
-        eval_env = self._eval_vec_env = self._make_vec_env_fn(instances=1)
-
-        prepop_env = self._make_vec_env_fn(self._instances)
-        states = prepop_env.reset()
+        env = self._vec_env
+        env.allocate_replay_memory()
+        states = env.reset()
         assert (self._prepopulate % self._instances) == 0
         for _ in range(self._prepopulate // self._instances):
-            states, _, _, _ = self._step(prepop_env, states, epsilon=1.0)
+            states, _, _, _ = self._step(env, states, epsilon=1.0)
 
         self._training_loop(duration)
 
     def _training_loop(self, duration):
-        env = self._vec_env
+        env = VecMonitor(self._vec_env)
         states = env.reset()
 
         for t in itertools.count(start=1):
@@ -52,7 +52,7 @@ class BaselineDQNAgent:
                 self._dqn.update_target_net()
 
             if t % self._train_freq == 1:
-                minibatch = env.replay_memory.sample(self._batch_size)
+                minibatch = env.sample_replay_memory(self._batch_size)
                 self._dqn.train(*minibatch)
 
             epsilon = BaselineDQNAgent.epsilon_schedule(t)
@@ -73,8 +73,6 @@ class BaselineDQNAgent:
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)
         next_states, rewards, dones, infos = vec_env.step(actions)
-        # Saves to main replay memory regardless of passed-in env!
-        self._vec_env.replay_memory.save(states, actions, rewards, dones)
         return next_states, rewards, dones, infos
 
     @staticmethod

@@ -3,28 +3,12 @@ import itertools
 import numpy as np
 
 from fast_dqn.agents.dqn.baseline_dqn_agent import BaselineDQNAgent
+from fast_dqn.environment import VecMonitor
 
 
 class FastDQNAgent(BaselineDQNAgent):
-    def __init__(self, make_vec_env_fn, workers, eval_freq, concurrent=True, synchronize=True, **kwargs):
-        assert workers >= 1
-        if synchronize:
-            assert workers != 1
-        super().__init__(make_vec_env_fn, workers, eval_freq, **kwargs)
-
-        if synchronize:
-            # Target update frequency must be divisible by number of workers to
-            # ensure workers use the correct network parameters when synchronized
-            assert self._target_update_freq % workers == 0
-
-        assert self._target_update_freq % self._train_freq == 0
-        self._minibatches_per_epoch = self._target_update_freq // self._train_freq
-
-        self._concurrent_training = concurrent
-        self._synchronize = synchronize
-
     def _training_loop(self, duration):
-        env = self._vec_env
+        env = VecMonitor(self._vec_env)
         states = env.reset()
 
         for i in itertools.count(start=0):
@@ -43,7 +27,7 @@ class FastDQNAgent(BaselineDQNAgent):
                     self._dqn.update_target_net()
 
                 if t % self._train_freq == 1:
-                    minibatch = env.replay_memory.sample(self._batch_size)
+                    minibatch = env.sample_replay_memory(self._batch_size)
                     self._dqn.train(*minibatch)
 
             epsilon = BaselineDQNAgent.epsilon_schedule(end)
