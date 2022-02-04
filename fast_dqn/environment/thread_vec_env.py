@@ -1,3 +1,4 @@
+import itertools
 from operator import itemgetter
 from threading import Thread
 from queue import Queue
@@ -39,21 +40,13 @@ class ThreadVecEnv:
             env.step_async(action)
 
     def step_wait(self):
-        s = []
-        r = []
-        d = []
-        for env in self._envs:
-            state, reward, done, _ = env.step_wait()
-            s.append(state)
-            r.append(reward)
-            d.append(done)
-        return np.stack(s), np.stack(r), np.stack(d), None
+        results = [env.step_wait() for env in self._envs]
+        states, rewards, dones, infos = zip(*results)
+        states, rewards, dones = map(np.stack, (states, rewards, dones))
+        return states, rewards, dones, infos
 
     def reset(self):
-        states = []
-        for env in self._envs:
-            s = env.reset()
-            states.append(s)
+        states = [env.reset() for env in self._envs]
         return np.stack(states)
 
     def seed(self, seed):
@@ -69,19 +62,10 @@ class ThreadVecEnv:
         assert self.has_replay_memory
         assert (batch_size % self.num_envs) == 0
         per_env_batch_size = batch_size // self.num_envs
-        s = []
-        a = []
-        r = []
-        ns = []
-        d = []
-        for env in self._envs:
-            states, actions, rewards, next_states, dones = env.replay_memory.sample(per_env_batch_size)
-            s.extend(states)
-            a.extend(actions)
-            r.extend(rewards)
-            ns.extend(next_states)
-            d.extend(dones)
-        return tuple(map(np.stack, (s, a, r, ns, d)))
+        minibatches = [env.replay_memory.sample(per_env_batch_size) for env in self._envs]
+        states, actions, rewards, next_states, dones = map(
+            lambda x: list(itertools.chain.from_iterable(x)), zip(*minibatches))
+        return map(np.stack, (states, actions, rewards, next_states, dones))
 
 
 class EnvWorker(gym.Wrapper):
