@@ -73,20 +73,22 @@ def env_worker(pipe, env_fn, rmem_fn):
     env = env_fn()
     replay_memory = rmem_fn()
     state = None
+    minibatch = None
 
     def step(data):
-        nonlocal state
-
         action = data
         if action is None:
             action = env.action_space.sample()
 
         next_state, reward, done, info = env.step(action)
-        replay_memory.save(state, action, reward, done)
         if done:
             next_state = env.reset()
-        state = next_state
         pipe.send((next_state, reward, done, info))
+
+        # Store the transition in the replay memory asynchronously
+        nonlocal state
+        replay_memory.save(state, action, reward, done)
+        state = next_state
 
     def reset(data):
         assert data is None
@@ -105,8 +107,13 @@ def env_worker(pipe, env_fn, rmem_fn):
 
     def sample_replay_memory(data):
         batch_size = data
-        minibatch = replay_memory.sample(batch_size)
+        nonlocal minibatch
+        if minibatch is None:
+            minibatch = replay_memory.sample(batch_size)
         pipe.send(minibatch)
+
+        # Pre-sample the next minibatch asynchronously
+        minibatch = replay_memory.sample(batch_size)
 
     def get_spaces(data):
         assert data is None
