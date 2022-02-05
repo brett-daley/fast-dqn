@@ -75,19 +75,22 @@ def env_worker(pipe, env_fn, rmem_fn):
     state = None
 
     def step(data):
-        global state
+        nonlocal state
+
         action = data
         if action is None:
             action = env.action_space.sample()
+
         next_state, reward, done, info = env.step(action)
         replay_memory.save(state, action, reward, done)
         if done:
             next_state = env.reset()
+        state = next_state
         pipe.send((next_state, reward, done, info))
 
     def reset(data):
         assert data is None
-        global state
+        nonlocal state
         state = env.reset()
         pipe.send(state)
 
