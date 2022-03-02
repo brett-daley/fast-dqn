@@ -1,9 +1,23 @@
 import itertools
+from threading import Thread
+from queue import Queue
 
 import numpy as np
 
 from fast_dqn.agents.dqn.baseline_dqn_agent import BaselineDQNAgent
 from fast_dqn.environment import VecMonitor
+
+
+# Put tuples of the form (function, args) in this queue to call them asynchronously in a background thread.
+# Warning: Any values returned by the functions cannot be retrieved.
+async_queue = Queue()
+
+def _queue_runner():
+    while True:
+        function, args = async_queue.get()
+        function(*args)
+        async_queue.task_done()
+Thread(target=_queue_runner, daemon=True).start()
 
 
 class FastDQNAgent(BaselineDQNAgent):
@@ -17,18 +31,22 @@ class FastDQNAgent(BaselineDQNAgent):
 
             for t in range(start, end):
                 if self._eval_freq > 0 and (t % self._eval_freq) == 1:
+                    async_queue.join()
                     mean_perf, std_perf = self.evaluate(epsilon=0.05, episodes=30)
                     print("Evaluation (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
 
                 if t > duration:
+                    async_queue.join()
                     return
 
                 if t % self._target_update_freq == 1:
-                    self._dqn.update_target_net()
+                    async_queue.put_nowait((self._dqn.update_target_net, ()))
+                    # Wait for all previous operations to finish
+                    async_queue.join()
 
                 if t % self._train_freq == 1:
                     minibatch = env.sample_replay_memory(self._batch_size)
-                    self._dqn.train(*minibatch)
+                    async_queue.put_nowait((self._dqn.train, minibatch))
 
             epsilon = BaselineDQNAgent.epsilon_schedule(end)
             states, _, _, _ = self._step(env, states, epsilon)
