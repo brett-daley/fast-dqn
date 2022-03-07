@@ -25,7 +25,8 @@ def make_parser():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
-    parser.add_argument('--evaluate', type=int, default=250_000)
+    # Evaluation disabled by default. Use 250k to match DeepMind Nature paper.
+    parser.add_argument('--evaluate', type=int, default=0)
     parser.add_argument('--num_envs', type=int, default=8)
     parser.add_argument('--seed', type=int, default=0)
     return parser
