@@ -33,6 +33,7 @@ class BaselineDQNAgent:
         assert (self._prepopulate % self._instances) == 0
         for _ in range(self._prepopulate // self._instances):
             states, _, _, _ = self._step(env, states, epsilon=1.0)
+        env.rmem.flush()
 
         self._training_loop(duration)
 
@@ -52,7 +53,7 @@ class BaselineDQNAgent:
                 self._dqn.update_target_net()
 
             if t % self._train_freq == 1:
-                minibatch = env.sample_replay_memory(self._batch_size)
+                minibatch = env.rmem.sample(self._batch_size)
                 self._dqn.train(*minibatch)
 
             epsilon = BaselineDQNAgent.epsilon_schedule(t)
@@ -62,10 +63,12 @@ class BaselineDQNAgent:
         assert 0.0 <= epsilon <= 1.0
         # With probability epsilon, take a random action
         if self.action_space.np_random.rand() <= epsilon:
-            # None signals random action for the envs
-            return self._instances * [None]
+            return [self.action_space.sample() for _ in range(self._instances)]
         # Otherwise, compute the greedy (i.e. best predicted) action
-        return self._dqn.greedy_actions(states).numpy()
+        return self._greedy_actions(states)
+
+    def _greedy_actions(self, states):
+        return self._dqn.greedy_actions(states, network='main').numpy()
 
     def _step(self, vec_env, states, epsilon):
         actions = self._policy(states, epsilon)

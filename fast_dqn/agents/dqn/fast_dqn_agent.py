@@ -41,12 +41,17 @@ class FastDQNAgent(BaselineDQNAgent):
 
                 if t % self._target_update_freq == 1:
                     async_queue.put_nowait((self._dqn.update_target_net, ()))
+                    # TODO: We need to separately parameterize the aux update period
+                    async_queue.put_nowait((self._dqn.update_aux_net, ()))
                     # Wait for all previous operations to finish
                     async_queue.join()
 
                 if t % self._train_freq == 1:
-                    minibatch = env.sample_replay_memory(self._batch_size)
+                    minibatch = env.rmem.sample(self._batch_size)
                     async_queue.put_nowait((self._dqn.train, minibatch))
 
             epsilon = BaselineDQNAgent.epsilon_schedule(end)
             states, _, _, _ = self._step(env, states, epsilon)
+
+    def _greedy_actions(self, states):
+        return self._dqn.greedy_actions(states, network='aux').numpy()
