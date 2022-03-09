@@ -21,6 +21,10 @@ Thread(target=_queue_runner, daemon=True).start()
 
 
 class FastDQNAgent(BaselineDQNAgent):
+    def __init__(self, make_vec_env_fn, instances, eval_freq, **kwargs):
+        super().__init__(make_vec_env_fn, instances, eval_freq, **kwargs)
+        self._exec_update_freq = 10_000
+
     def _training_loop(self, duration):
         env = VecMonitor(self._vec_env)
         states = env.reset()
@@ -39,12 +43,15 @@ class FastDQNAgent(BaselineDQNAgent):
                     async_queue.join()
                     return
 
-                if t % self._target_update_freq == 1:
-                    async_queue.put_nowait((self._dqn.update_target_net, ()))
-                    # TODO: We need to separately parameterize the aux update period
-                    async_queue.put_nowait((self._dqn.update_aux_net, ()))
-                    # Wait for all previous operations to finish
-                    async_queue.join()
+                # Periodically update the target/exec networks
+                update_target_net = (t % self._target_update_freq == 1)
+                update_exec_net = (t % self._exec_update_freq == 1)
+                if update_target_net or update_exec_net:
+                    if update_exec_net:
+                        self._dqn.update_exec_net()
+                    async_queue.join()  # Wait for all training operations to finish
+                    if update_target_net:
+                        self._dqn.update_target_net()
 
                 if t % self._train_freq == 1:
                     minibatch = env.rmem.sample(self._batch_size)
@@ -54,4 +61,4 @@ class FastDQNAgent(BaselineDQNAgent):
             states, _, _, _ = self._step(env, states, epsilon)
 
     def _greedy_actions(self, states):
-        return self._dqn.greedy_actions(states, network='aux').numpy()
+        return self._dqn.greedy_actions(states, network='exec').numpy()

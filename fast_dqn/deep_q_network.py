@@ -21,7 +21,7 @@ class DeepQNetwork:
         self._main_net = model()
         self._main_vars = self._main_net.trainable_variables
         self._target_net = model()
-        self._aux_net = model()  # Used by Fast DQN for concurrent training/execution
+        self._exec_net = model()  # Used by Fast DQN for concurrent training/execution
 
     def _preprocess_states(self, states):
         return tf.cast(states, tf.float32) / 255.0
@@ -31,7 +31,7 @@ class DeepQNetwork:
         return {
             'main': self._main_net,
             'target': self._target_net,
-            'aux': self._aux_net,
+            'exec': self._exec_net,
         }[network](self._preprocess_states(states))
 
     @tf.function
@@ -58,8 +58,8 @@ class DeepQNetwork:
     def update_target_net(self):
         self._copy_network(self._main_net.trainable_variables, self._target_net.trainable_variables)
 
-    def update_aux_net(self):
-        self._copy_network(self._main_net.trainable_variables, self._aux_net.trainable_variables)
+    def update_exec_net(self):
+        self._copy_network(self._main_net.trainable_variables, self._exec_net.trainable_variables)
 
     @tf.function
     def _copy_network(self, src_vars, dst_vars):
