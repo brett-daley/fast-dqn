@@ -21,8 +21,8 @@ Thread(target=_queue_runner, daemon=True).start()
 
 
 class FastDQNAgent(BaselineDQNAgent):
-    def __init__(self, make_vec_env_fn, instances, eval_freq, **kwargs):
-        super().__init__(make_vec_env_fn, instances, eval_freq, **kwargs)
+    def __init__(self, make_vec_env_fn, instances, **kwargs):
+        super().__init__(make_vec_env_fn, instances, **kwargs)
         self._exec_update_freq = 10_000
 
     def _training_loop(self, duration):
@@ -34,11 +34,6 @@ class FastDQNAgent(BaselineDQNAgent):
             end = start + self._instances
 
             for t in range(start, end):
-                if self._eval_freq > 0 and (t % self._eval_freq) == 1:
-                    async_queue.join()
-                    mean_perf, std_perf = self.evaluate(epsilon=0.05, episodes=30)
-                    print("Evaluation (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
-
                 if t > duration:
                     async_queue.join()
                     return

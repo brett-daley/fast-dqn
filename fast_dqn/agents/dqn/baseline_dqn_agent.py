@@ -8,16 +8,12 @@ from fast_dqn.environment import VecMonitor
 
 
 class BaselineDQNAgent:
-    def __init__(self, make_vec_env_fn, instances, eval_freq, **kwargs):
+    def __init__(self, make_vec_env_fn, instances, **kwargs):
         self._make_vec_env_fn = make_vec_env_fn
         self._instances = instances
 
         self._vec_env = env = make_vec_env_fn(instances)
         self.action_space = self._vec_env.action_space
-
-        self._eval_freq = eval_freq
-        # TODO: This is allocating its own replay memory. We need to add an option to disable.
-        self._eval_vec_env = self._make_vec_env_fn(instances=1)
 
         optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
@@ -42,10 +38,6 @@ class BaselineDQNAgent:
         states = env.reset()
 
         for t in itertools.count(start=1):
-            if self._eval_freq > 0 and (t % self._eval_freq) == 1:
-                mean_perf, std_perf = self.evaluate(epsilon=0.05, episodes=30)
-                print("Evaluation (t={}): mean={}, std={}".format(t - 1, mean_perf, std_perf))
-
             if t > duration:
                 return
 
@@ -80,19 +72,3 @@ class BaselineDQNAgent:
         assert t > 0, "timestep must start at 1"
         epsilon = 1.0 - 0.9 * (t / 1_000_000)
         return max(epsilon, 0.1)
-
-    def evaluate(self, epsilon, episodes=30):
-        assert episodes > 0
-        env = self._eval_vec_env
-
-        for _ in range(episodes):
-            state = env.reset()
-            done = False
-
-            while not done:
-                action = self._policy(state, epsilon)
-                state, _, _, info = env.step(action)
-                done = info[0]['real_done']
-
-        returns = env.get_episode_returns()[-episodes:]
-        return np.mean(returns), np.std(returns, ddof=1)

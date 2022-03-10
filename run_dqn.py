@@ -25,8 +25,6 @@ def make_parser():
     parser = ArgumentParser()
     parser.add_argument('--game', type=str, default='pong')
     parser.add_argument('--timesteps', type=int, default=5_000_000)
-    # Evaluation disabled by default. Use 250k to match DeepMind Nature paper.
-    parser.add_argument('--evaluate', type=int, default=0)
     parser.add_argument('--num_envs', type=int, default=8)
     parser.add_argument('--seed', type=int, default=0)
     return parser
@@ -39,12 +37,10 @@ def main(agent_cls, kwargs):
     np.random.seed(seed)
     tf.random.set_seed(seed)
 
-    num_envs = kwargs['num_envs']
-
     rmem_capacity = 1_000_000
     make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, rmem_capacity, seed)
 
-    agent = agent_cls(make_vec_env_fn, num_envs, kwargs['evaluate'], **kwargs)
+    agent = agent_cls(make_vec_env_fn, **kwargs)
     agent.run(kwargs['timesteps'])
 
 
