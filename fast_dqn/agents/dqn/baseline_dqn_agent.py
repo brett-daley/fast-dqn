@@ -43,6 +43,7 @@ class BaselineDQNAgent:
 
             if t % self._target_update_freq == 1:
                 self._dqn.update_target_net()
+                env.rmem.flush()
 
             if t % self._train_freq == 1:
                 minibatch = env.rmem.sample(self._batch_size)
