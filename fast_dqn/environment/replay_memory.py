@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 import itertools
+from operator import itemgetter
 
 import numpy as np
 
@@ -15,6 +17,8 @@ class ReplayMemory:
         self.rmems = [rmem_fn() for _ in range(num_envs)]
         # Temporarily holds transitions until flush() is explicitly called
         self._transition_buffer = []
+        # Handles parallel writes to the replay memory partitions
+        self._executor = ThreadPoolExecutor(max_workers=num_envs)
 
     def size(self):
         return sum([rmem._size_now for rmem in self.rmems])
@@ -22,10 +26,6 @@ class ReplayMemory:
     def save(self, states, actions, rewards, dones):
         transition = (states, actions, rewards, dones)
         self._transition_buffer.append(transition)
-
-    def _write(self, states, actions, rewards, dones):
-        for i, rmem in enumerate(self.rmems):
-            rmem.save(states[i], actions[i], rewards[i], dones[i])
 
     def sample(self, batch_size):
         assert (batch_size % self.num_envs) == 0
@@ -36,9 +36,17 @@ class ReplayMemory:
         return map(np.stack, (states, actions, rewards, next_states, dones))
 
     def flush(self):
-        for transition in self._transition_buffer:
-            self._write(*transition)
+        # Flush each replay memory partition using a separate thread
+        results = self._executor.map(self._flush_rmem, range(self.num_envs))
+        for r in results:
+            pass  # Wait for each thread to finish
         self._transition_buffer.clear()
+
+    def _flush_rmem(self, thread_id):
+        rmem = self.rmems[thread_id]
+        getter = itemgetter(thread_id)
+        for transition in self._transition_buffer:
+            rmem.save(*map(getter, transition))
 
 
 class ScalarReplayMemory:
