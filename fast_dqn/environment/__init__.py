@@ -9,4 +9,5 @@ def make(game, instances, rmem_capacity, seed):
     env_fn = lambda: atari_env.make(game)
     env = ThreadVecEnv([env_fn for _ in range(instances)], replay_memory)
     env.seed(seed)
+    env.action_space.seed(seed)
     return env
