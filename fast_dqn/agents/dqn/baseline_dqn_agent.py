@@ -1,22 +1,20 @@
 import itertools
 
 import numpy as np
-from tensorflow.keras.optimizers import RMSprop
 
 from fast_dqn.deep_q_network import DeepQNetwork
 from fast_dqn.environment import VecMonitor
 
 
 class BaselineDQNAgent:
-    def __init__(self, make_vec_env_fn, instances, **kwargs):
+    def __init__(self, make_vec_env_fn, instances, pytorch, **kwargs):
         self._make_vec_env_fn = make_vec_env_fn
         self._instances = instances
 
         self._vec_env = env = make_vec_env_fn(instances)
         self.action_space = self._vec_env.action_space
 
-        optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
-        self._dqn = DeepQNetwork(env, optimizer, discount=0.99)
+        self._dqn = DeepQNetwork(env, discount=0.99, pytorch=pytorch)
 
         self._prepopulate = 50_000
         self._train_freq = 4

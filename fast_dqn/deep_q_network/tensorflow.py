@@ -1,11 +1,13 @@
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, InputLayer
+from tensorflow.keras.optimizers import RMSprop
 
 
-class DeepQNetwork:
-    def __init__(self, env, optimizer, discount):
-        self.optimizer = optimizer
+class TensorflowDeepQNetwork:
+    def __init__(self, env, discount):
+        # TODO: We should use Adam to be consistent with Pytorch
+        self.optimizer = RMSprop(lr=2.5e-4, rho=0.95, epsilon=0.01, centered=True)
         self.discount = discount
 
         def model():

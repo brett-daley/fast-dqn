@@ -4,7 +4,6 @@ import os
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 import numpy as np
-import tensorflow as tf
 
 from fast_dqn import environment
 from fast_dqn.agents import DQNAgent
@@ -12,6 +11,7 @@ from fast_dqn.environment.replay_memory import ReplayMemory
 
 
 def allow_gpu_memory_growth():
+    import tensorflow as tf
     try:
         gpu_list = tf.config.list_physical_devices('GPU')
     except AttributeError:
@@ -27,15 +27,21 @@ def make_parser():
     parser.add_argument('--timesteps', type=int, default=5_000_000)
     parser.add_argument('--num_envs', type=int, default=8)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--pytorch', action='store_true')
     return parser
 
 
 def main(agent_cls, kwargs):
-    allow_gpu_memory_growth()
-
     seed = kwargs['seed']
     np.random.seed(seed)
-    tf.random.set_seed(seed)
+
+    if kwargs['pytorch']:
+        import torch
+        torch.manual_seed(seed)
+    else:
+        import tensorflow as tf
+        tf.random.set_seed(seed)
+        allow_gpu_memory_growth()
 
     rmem_capacity = 1_000_000
     make_vec_env_fn = lambda instances: environment.make(kwargs['game'], instances, rmem_capacity, seed)
