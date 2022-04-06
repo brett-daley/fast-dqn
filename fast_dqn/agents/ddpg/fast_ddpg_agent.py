@@ -53,7 +53,8 @@ class FastDDPGAgent(BaselineDDPGAgent):
                     minibatch = env.rmem.sample(self._batch_size)
                     async_queue.put_nowait((self._ddpg.train, minibatch))
 
-            states, _, _, _ = self._step(env, states)
+            stddev = BaselineDDPGAgent.stddev_schedule(end)
+            states, _, _, _ = self._step(env, states, stddev)
 
     def _greedy_actions(self, states):
         return self._ddpg.predict_actions(states, network='exec').numpy()

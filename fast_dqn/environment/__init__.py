@@ -17,12 +17,12 @@ def make(game, instances, rmem_capacity, seed):
 # TODO: and this make is for deepmind control
 def make_dmc_env(domain, task, instances, rmem_capacity, seed):
     replay_memory = DDPGReplayMemory(rmem_capacity, instances, seed)
-    env_fn = lambda: atari_env.HistoryWrapper(Monitor(dmc2gym.make(domain_name=domain, 
-                                                            task_name=task, 
-                                                            from_pixels=True, 
+    env_fn = lambda: atari_env.HistoryWrapper(Monitor(dmc2gym.make(domain_name=domain,
+                                                            task_name=task,
+                                                            from_pixels=True,
                                                             visualize_reward=False,
-                                                            channels_first=False, 
-                                                            time_limit=500, 
+                                                            channels_first=False,
+                                                            time_limit=1000,
                                                             )
                                             ), 
                                     history_len=3)
