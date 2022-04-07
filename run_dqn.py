@@ -8,7 +8,6 @@ import tensorflow as tf
 
 from fast_dqn import environment
 from fast_dqn.agents import DQNAgent
-from fast_dqn.environment.replay_memory import ReplayMemory
 
 
 def allow_gpu_memory_growth():

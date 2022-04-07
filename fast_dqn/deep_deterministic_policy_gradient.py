@@ -104,6 +104,7 @@ class DDPG:
             'target': self._target_encoder,
             'exec': self._exec_encoder,
         }[network](states)
+        actions = tf.cast(actions, encoding.dtype)
         concat = tf.concat([encoding, actions], axis=1)
         return {
             'main': self._main_critic,

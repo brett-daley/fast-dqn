@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 from distutils.util import strtobool
 import os
-
 os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 import numpy as np
@@ -9,20 +8,7 @@ import tensorflow as tf
 
 from fast_dqn import environment
 from fast_dqn.agents import DDPGAgent
-from fast_dqn.ddpg_replay_memory import DDPGReplayMemory
-from fast_dqn.environment.thread_vec_env import ThreadVecEnv
-from fast_dqn.environment.monitor import Monitor
-from fast_dqn.environment.atari_env import HistoryWrapper
-
-
-def allow_gpu_memory_growth():
-    try:
-        gpu_list = tf.config.list_physical_devices('GPU')
-    except AttributeError:
-        gpu_list = tf.config.experimental.list_physical_devices('GPU')
-
-    for gpu in gpu_list:
-        tf.config.experimental.set_memory_growth(gpu, True)
+from run_dqn import allow_gpu_memory_growth
 
 
 def make_parser():

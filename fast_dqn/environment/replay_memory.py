@@ -53,21 +53,23 @@ class ScalarReplayMemory:
     def seed(self, seed):
         self._np_random = np.random.RandomState(seed)
 
-    def _allocate(self, observation):
+    def _allocate(self, observation, action):
+        action = np.array(action)
         # Allocate memory for the buffers
         self.observations = np.empty([self._capacity, *observation.shape],
                                      dtype=observation.dtype)
-        self.actions = np.empty([self._capacity], dtype=np.int32)
+        self.actions = np.empty([self._capacity, *action.shape],
+                                dtype=action.dtype)
         self.rewards = np.empty([self._capacity], dtype=np.float32)
         self.dones = np.empty([self._capacity], dtype=np.bool)
+        self._allocated = True
 
     def save(self, state, action, reward, done):
         # NOTE: Assumes observations are stacked on last axis to form states
         observation = state[..., -1, None]
 
         if not self._allocated:
-            self._allocate(observation)
-            self._allocated = True
+            self._allocate(observation, action)
             self._history_len = state.shape[-1]
 
         p = self._pointer
