@@ -1,0 +1,2 @@
+from fast_dqn.agents.offpolicy.baseline_offpolicy_agent import BaselineOffpolicyAgent
+from fast_dqn.agents.offpolicy.fast_offpolicy_agent import FastOffpolicyAgent

@@ -1,13 +1,15 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, InputLayer
-import numpy as np
+
+from fast_dqn.agents.offpolicy.offpolicy_network import OffpolicyNetwork, copy_network
 
 
-class DDPG:
-    def __init__(self, env, actor_optimizer, critic_optimizer, discount):
-        self.actor_optimizer = actor_optimizer
-        self.critic_optimizer = critic_optimizer
+class DDPGNetwork(OffpolicyNetwork):
+    def __init__(self, env, optimizer_fn, discount):
+        self.actor_optimizer = optimizer_fn()
+        self.critic_optimizer = optimizer_fn()
         self.discount = discount
         self.action_limit = env.action_space.high.max()
 
@@ -52,9 +54,6 @@ class DDPG:
         self._exec_actor = make_actor()
         self._exec_critic = make_critic()
 
-    def _preprocess_states(self, states):
-        return tf.cast(states, tf.float32) / 255.0
-
     # TODO: naming is a little confusing... this function only gets
     # Called to update the critic network
     @tf.function
@@ -81,7 +80,7 @@ class DDPG:
         return actions, values
 
     @tf.function
-    def predict_actions(self, states, network):
+    def greedy_actions(self, states, network):
         states = self._preprocess_states(states)
         encoding = {
             'main': self._main_encoder,
@@ -137,16 +136,11 @@ class DDPG:
         self.actor_optimizer.apply_gradients(zip(gradient, self._actor_vars))
 
     def update_target_net(self):
-        self._copy_network(self._main_encoder.trainable_variables, self._target_encoder.trainable_variables)
-        self._copy_network(self._main_actor.trainable_variables, self._target_actor.trainable_variables)
-        self._copy_network(self._main_critic.trainable_variables, self._target_critic.trainable_variables)
+        copy_network(self._main_encoder, self._target_encoder)
+        copy_network(self._main_actor, self._target_actor)
+        copy_network(self._main_critic, self._target_critic)
 
     def update_exec_net(self):
-        self._copy_network(self._main_encoder.trainable_variables, self._exec_encoder.trainable_variables)
-        self._copy_network(self._main_actor.trainable_variables, self._exec_actor.trainable_variables)
-        self._copy_network(self._main_critic.trainable_variables, self._exec_critic.trainable_variables)
-
-    @tf.function
-    def _copy_network(self, src_vars, dst_vars):
-        for var, target in zip(src_vars, dst_vars):
-            target.assign(var)
+        copy_network(self._main_encoder, self._exec_encoder)
+        copy_network(self._main_actor, self._exec_actor)
+        copy_network(self._main_critic, self._exec_critic)
