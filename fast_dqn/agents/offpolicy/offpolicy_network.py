@@ -12,6 +12,13 @@ class OffpolicyNetwork(ABC):
         self._target_net = None
         self._exec_net = None  # Used by Fast DRL for concurrent training/execution
 
+    def get_model(self, network):
+        return {
+            'main': self._main_net,
+            'target': self._target_net,
+            'exec': self._exec_net,
+        }[network]
+
     def _preprocess_states(self, states):
         if states.dtype == tf.uint8:
             return tf.cast(states, tf.float32) / 255.0
@@ -19,11 +26,8 @@ class OffpolicyNetwork(ABC):
 
     @tf.function
     def predict(self, states, network):
-        return {
-            'main': self._main_net,
-            'target': self._target_net,
-            'exec': self._exec_net,
-        }[network](self._preprocess_states(states))
+        model = self.get_model(network)
+        return model(self._preprocess_states(states))
 
     @abstractmethod
     def greedy_actions(self, states, network):

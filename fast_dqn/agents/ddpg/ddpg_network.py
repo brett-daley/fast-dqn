@@ -3,7 +3,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, InputLayer
 
-from fast_dqn.agents.offpolicy.offpolicy_network import OffpolicyNetwork, copy_network
+from fast_dqn.agents.offpolicy.offpolicy_network import OffpolicyNetwork
 
 
 class DDPGNetwork(OffpolicyNetwork):
@@ -13,103 +13,37 @@ class DDPGNetwork(OffpolicyNetwork):
         self.discount = discount
         self.action_limit = env.action_space.high.max()
 
-        kernel_size = 3
-        num_filters = 32
-        def make_encoder():
-            return Sequential([
-                InputLayer(env.observation_space.shape),
-                Conv2D(num_filters, kernel_size=kernel_size, strides=2, activation='relu'),
-                Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
-                Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
-                Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
-                Flatten(),
-            ])
-        encoder_output_shape = ((((((((env.observation_space.shape[0] - kernel_size) // 2 + 1 ) - kernel_size) + 1) - kernel_size) + 1) - kernel_size) + 1) ** 2 * num_filters
-
-        def make_actor():
-            return Sequential([
-                InputLayer(encoder_output_shape),
-                Dense(256, activation='relu'),
-                Dense(256, activation='relu'),
-                Dense(np.prod(env.action_space.shape), activation='tanh')
-            ])
-        def make_critic():
-            return Sequential([
-                InputLayer(encoder_output_shape + env.action_space.shape[0]),
-                Dense(256, activation='relu'),
-                Dense(256, activation='relu'),
-                Dense(1)
-            ])
-
-        self._main_encoder = make_encoder()
-        self._main_actor = make_actor()
-        self._main_critic = make_critic()
-        self._encoder_vars = self._main_encoder.trainable_variables
-        self._actor_vars = self._main_actor.trainable_variables
-        self._critic_vars = self._main_critic.trainable_variables
-        self._target_encoder = make_encoder()
-        self._target_actor = make_actor()
-        self._target_critic = make_critic()
-        self._exec_encoder = make_encoder()
-        self._exec_actor = make_actor()
-        self._exec_critic = make_critic()
+        self._main_net = _DDPGSharedFeaturesModel(env)
+        self._target_net = _DDPGSharedFeaturesModel(env)
+        self._exec_net = _DDPGSharedFeaturesModel(env)
 
     # TODO: naming is a little confusing... this function only gets
     # Called to update the critic network
     @tf.function
     def predict_actions_and_values(self, states, network):
-        states = self._preprocess_states(states)
-        encoding = {
-            'main': self._main_encoder,
-            'target': self._target_encoder,
-            'exec': self._exec_encoder,
-        }[network](states)
+        model = self.get_model(network)
+        encoding = model.encode(self._preprocess_states(states))
         # Actor does not update encoder
         encoding = tf.stop_gradient(encoding)
-        actions = {
-            'main': self._main_actor,
-            'target': self._target_actor,
-            'exec': self._exec_actor,
-        }[network](encoding)
+        actions = model.actions(encoding)
         actions = tf.clip_by_value(actions, -self.action_limit, self.action_limit)
-        values = {
-            'main': self._main_critic,
-            'target': self._target_critic,
-            'exec': self._exec_critic,
-        }[network](tf.concat([encoding, actions], axis=1))
+        values = model.values(encoding, actions)
         return actions, values
 
     @tf.function
     def greedy_actions(self, states, network):
-        states = self._preprocess_states(states)
-        encoding = {
-            'main': self._main_encoder,
-            'target': self._target_encoder,
-            'exec': self._exec_encoder,
-        }[network](states)
+        model = self.get_model(network)
+        encoding = model.encode(self._preprocess_states(states))
         # Actor does not update encoder
         encoding = tf.stop_gradient(encoding)
-        return {
-            'main': self._main_actor,
-            'target': self._target_actor,
-            'exec': self._exec_actor,
-        }[network](encoding)
+        return model.actions(encoding)
 
     @tf.function
     def predict_values(self, states, actions, network):
-        states = self._preprocess_states(states)
-        encoding = {
-            'main': self._main_encoder,
-            'target': self._target_encoder,
-            'exec': self._exec_encoder,
-        }[network](states)
+        model = self.get_model(network)
+        encoding = model.encode(self._preprocess_states(states))
         actions = tf.cast(actions, encoding.dtype)
-        concat = tf.concat([encoding, actions], axis=1)
-        return {
-            'main': self._main_critic,
-            'target': self._target_critic,
-            'exec': self._exec_critic,
-        }[network](concat)
+        return model.values(encoding, actions)
 
     @tf.function
     def train(self, states, actions, rewards, next_states, dones):
@@ -124,23 +58,62 @@ class DDPGNetwork(OffpolicyNetwork):
             Q = tf.squeeze(Q)
             loss = tf.reduce_mean(tf.square(targets - Q))
 
-        gradient = tape.gradient(loss, self._encoder_vars + self._critic_vars)
-        self.critic_optimizer.apply_gradients(zip(gradient, self._encoder_vars + self._critic_vars))
+        # Critic vars implicitly update encoder too
+        gradient = tape.gradient(loss, self._main_net.critic_vars)
+        self.critic_optimizer.apply_gradients(zip(gradient, self._main_net.critic_vars))
 
         # Actor Update
         with tf.GradientTape() as tape:
             _, Q = self.predict_actions_and_values(states, network='main')
             loss = - tf.reduce_mean(Q) 
 
-        gradient = tape.gradient(loss, self._actor_vars)
-        self.actor_optimizer.apply_gradients(zip(gradient, self._actor_vars))
+        gradient = tape.gradient(loss, self._main_net.actor_vars)
+        self.actor_optimizer.apply_gradients(zip(gradient, self._main_net.actor_vars))
 
-    def update_target_net(self):
-        copy_network(self._main_encoder, self._target_encoder)
-        copy_network(self._main_actor, self._target_actor)
-        copy_network(self._main_critic, self._target_critic)
 
-    def update_exec_net(self):
-        copy_network(self._main_encoder, self._exec_encoder)
-        copy_network(self._main_actor, self._exec_actor)
-        copy_network(self._main_critic, self._exec_critic)
+class _DDPGSharedFeaturesModel(tf.keras.Model):
+    def __init__(self, env):
+        super().__init__(self)
+        kernel_size = 3
+        num_filters = 32
+
+        self._encoder = Sequential([
+            InputLayer(env.observation_space.shape),
+            Conv2D(num_filters, kernel_size=kernel_size, strides=2, activation='relu'),
+            Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
+            Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
+            Conv2D(num_filters, kernel_size=kernel_size, strides=1, activation='relu'),
+            Flatten(),
+        ])
+        encoder_output_shape = ((((((((env.observation_space.shape[0] - kernel_size) // 2 + 1 ) - kernel_size) + 1) - kernel_size) + 1) - kernel_size) + 1) ** 2 * num_filters
+
+        self._actor = Sequential([
+            InputLayer(encoder_output_shape),
+            Dense(256, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(np.prod(env.action_space.shape), activation='tanh')
+        ])
+
+        self._critic = Sequential([
+            InputLayer(encoder_output_shape + env.action_space.shape[0]),
+            Dense(256, activation='relu'),
+            Dense(256, activation='relu'),
+            Dense(1)
+        ])
+
+        self.critic_vars = self._encoder.trainable_variables + self._critic.trainable_variables
+        # Actor does not update encoder
+        self.actor_vars = self._actor.trainable_variables
+
+    def call(self, inputs):
+        raise NotImplementedError
+
+    def encode(self, states):
+        return self._encoder(states)
+
+    def values(self, encoding, actions):
+        concat = tf.concat([encoding, actions], axis=1)
+        return self._critic(concat)
+
+    def actions(self, encoding):
+        return self._actor(encoding)
